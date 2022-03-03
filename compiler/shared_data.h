@@ -1,0 +1,4 @@
+#ifndef INCLUDE_SHARED_DATA_H
+#define INCLUDE_SHARED_DATA_H
+
+#endif
