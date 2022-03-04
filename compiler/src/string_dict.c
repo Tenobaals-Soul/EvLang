@@ -25,17 +25,17 @@ int __hash_string(const char * string) {
 }
 
 void __append_to_string_dict_items(struct __string_dict_item ** list_pos, const char * key, void * val) {
-    struct __string_dict_item * current = *list_pos;
-    while (current) {
+    while (*list_pos) {
+        struct __string_dict_item * current = *list_pos;
         if (strcmp(current->key, key) == 0) {
             current->val = val;
             return;
         }
-        current = current->next;
+        *list_pos = current->next;
     }
     struct __string_dict_item * item = malloc(sizeof(struct __string_dict_item));
-    item->next = *list_pos;
-    *list_pos = item->next;
+    item->next = NULL;
+    *list_pos = item;
     item->key = malloc(strlen(key) + 1);
     strcpy(item->key, key);
     item->val = val;

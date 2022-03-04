@@ -1,5 +1,8 @@
 {
     "files.associations": {
-        "vector": "c"
+        "vector": "c",
+        "type_traits": "c",
+        "cmath": "cpp",
+        "limits": "cpp"
     }
 }
