@@ -81,6 +81,7 @@ void __get_keyword_or_bool(char * identifier, unsigned long len, current_read_da
     if (val) {
         list->tokens[list->cursor].type = KEYWORD_TOKEN;
         list->tokens[list->cursor].keyword = val;
+        free(identifier);
     }
     else {
         list->tokens[list->cursor].type = IDENTIFIER_TOKEN;
@@ -182,7 +183,7 @@ int starts_with(const char * src, const char * search) {
 }
 
 int __make_operator(current_read_data * cr, const char ** src, TokenList * list, BasicOperator op_type, const char * cmp) {
-    if (starts_with(*src, cmp) == 0) {
+    if (starts_with(*src, cmp)) {
         list->tokens[list->cursor].type = OPERATOR_TOKEN;
         list->tokens[list->cursor].operator_type = op_type;
         list->tokens[list->cursor].char_in_line = cr->current_char;
