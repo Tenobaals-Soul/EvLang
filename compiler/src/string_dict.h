@@ -5,7 +5,7 @@
 
 typedef struct StringDict {
     unsigned int count;
-    struct __string_dict_item * items[STRING_DICT_TABLE_SIZE];
+    struct string_dict_item * items[STRING_DICT_TABLE_SIZE];
 } StringDict;
 
 void string_dict_init(StringDict * dict);

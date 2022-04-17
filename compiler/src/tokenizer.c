@@ -44,6 +44,7 @@ int try_extract_optional_end(current_read_data * cr, const char ** src, TokenLis
         cr->line_begin = *src;
         list->tokens[list->cursor].char_in_line = cr->current_char;
         list->tokens[list->cursor].line_in_file = cr->current_line;
+        list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = 1;
         list->tokens[list->cursor].type = OPTIONAL_END_TOKEN;
         return 1;
@@ -51,10 +52,11 @@ int try_extract_optional_end(current_read_data * cr, const char ** src, TokenLis
     return 0;
 }
 
-int __get_bool(char * identifier, unsigned long len, current_read_data * cr, TokenList * list) {
+int t_get_bool(char * identifier, unsigned long len, current_read_data * cr, TokenList * list) {
     if (strcmp(identifier, "true") == 0) {
         list->tokens[list->cursor].char_in_line = cr->current_char;
         list->tokens[list->cursor].line_in_file = cr->current_line;
+        list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = len;
         list->tokens[list->cursor].type = FIXED_VALUE_TOKEN;
         list->tokens[list->cursor].fixed_value.type = NUMBER;
@@ -64,6 +66,7 @@ int __get_bool(char * identifier, unsigned long len, current_read_data * cr, Tok
     else if (strcmp(identifier, "false") == 0) {
         list->tokens[list->cursor].char_in_line = cr->current_char;
         list->tokens[list->cursor].line_in_file = cr->current_line;
+        list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = len;
         list->tokens[list->cursor].type = FIXED_VALUE_TOKEN;
         list->tokens[list->cursor].fixed_value.type = NUMBER;
@@ -73,14 +76,14 @@ int __get_bool(char * identifier, unsigned long len, current_read_data * cr, Tok
     return 0;
 }
 
-void __get_keyword_or_bool(char * identifier, unsigned long len, current_read_data * cr, StringDict * dict, TokenList * list) {
-    void * val = string_dict_get(dict, identifier);
+void t_get_keyword_or_identifier(char* identifier, unsigned long len, current_read_data* cr, StringDict* keyword_dict, TokenList* list) {
+    void* val = string_dict_get(keyword_dict, identifier);
     list->tokens[list->cursor].char_in_line = cr->current_char;
     list->tokens[list->cursor].line_in_file = cr->current_line;
+    list->tokens[list->cursor].line_content = cr->line_begin;
     list->tokens[list->cursor].text_len = len;
     if (val) {
-        list->tokens[list->cursor].type = KEYWORD_TOKEN;
-        list->tokens[list->cursor].keyword = val;
+        list->tokens[list->cursor].type = (TokenType) val;
         free(identifier);
     }
     else {
@@ -93,8 +96,8 @@ int try_extract_identifier_or_keyword(current_read_data * cr, StringDict * dict,
     unsigned long len;
     char * identifier = read_next_identifier(*src, &len);
     if (identifier) {
-        if (!__get_bool(identifier, len, cr, list)) {
-            __get_keyword_or_bool(identifier, len, cr, dict, list);
+        if (!t_get_bool(identifier, len, cr, list)) {
+            t_get_keyword_or_identifier(identifier, len, cr, dict, list);
         }
         *src += len;
         cr->current_char += len;
@@ -103,7 +106,7 @@ int try_extract_identifier_or_keyword(current_read_data * cr, StringDict * dict,
     return 0;
 }
 
-int __get_number(current_read_data * cr, const char ** src, TokenList * list) {
+static int t_get_number(current_read_data * cr, const char ** src, TokenList * list) {
     const char * before = *src;
     long double value_found = strtold(before, (void*) src);
     if (before != *src) {
@@ -111,6 +114,7 @@ int __get_number(current_read_data * cr, const char ** src, TokenList * list) {
         cr->current_char += len;
         list->tokens[list->cursor].char_in_line = cr->current_char;
         list->tokens[list->cursor].line_in_file = cr->current_line;
+        list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = len;
         list->tokens[list->cursor].type = FIXED_VALUE_TOKEN;
         list->tokens[list->cursor].fixed_value.type = NUMBER;
@@ -120,7 +124,7 @@ int __get_number(current_read_data * cr, const char ** src, TokenList * list) {
     return 0;
 }
 
-int __get_str(current_read_data * cr, const char ** src, TokenList * list) {
+static int t_get_str(current_read_data * cr, const char ** src, TokenList * list) {
     if (**src == '\"') {
         ++*src;
         cr->current_char++;
@@ -135,6 +139,7 @@ int __get_str(current_read_data * cr, const char ** src, TokenList * list) {
         *src += len + 1;
         list->tokens[list->cursor].char_in_line = cr->current_char;
         list->tokens[list->cursor].line_in_file = cr->current_line;
+        list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = len + 2;
         list->tokens[list->cursor].type = FIXED_VALUE_TOKEN;
         list->tokens[list->cursor].fixed_value.type = STRING;
@@ -144,7 +149,7 @@ int __get_str(current_read_data * cr, const char ** src, TokenList * list) {
     return 0;
 }
 
-int __get_char(current_read_data * cr, const char ** src, TokenList * list) {
+static int t_get_char(current_read_data * cr, const char ** src, TokenList * list) {
     if (**src == '\'') {
         ++*src;
         cr->current_char++;
@@ -159,6 +164,7 @@ int __get_char(current_read_data * cr, const char ** src, TokenList * list) {
         *src += len + 1;
         list->tokens[list->cursor].char_in_line = cr->current_char;
         list->tokens[list->cursor].line_in_file = cr->current_line;
+        list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = len + 2;
         list->tokens[list->cursor].type = FIXED_VALUE_TOKEN;
         list->tokens[list->cursor].fixed_value.type = CHARACTER;
@@ -168,26 +174,28 @@ int __get_char(current_read_data * cr, const char ** src, TokenList * list) {
     return 0;
 }
 
-int try_extract_fixed_value(current_read_data * cr, const char ** src, TokenList * list) {
-    if (__get_number(cr, src, list)) return 1;
-    if (__get_str(cr, src, list)) return 1;
-    if (__get_char(cr, src, list)) return 1;
+static int try_extract_fixed_value(current_read_data * cr, const char ** src, TokenList * list) {
+    if (t_get_number(cr, src, list)) return 1;
+    if (t_get_str(cr, src, list)) return 1;
+    if (t_get_char(cr, src, list)) return 1;
     return 0;
 }
 
-int starts_with(const char * src, const char * search) {
-    for (int i = 0; !src[i] && !isspace(src[i]) && !isalpha(src[i]) && !isdigit(src[i]); i++) {
+static int starts_with(const char* src, const char* search) {
+    int i;
+    for (i = 0; search[i] && src[i] && !isspace(src[i]) && !isalpha(src[i]) && !isdigit(src[i]); i++) {
         if (src[i] != search[i]) return 0;
     }
-    return 1;
+    return search[i] == 0;
 }
 
-int __make_operator(current_read_data * cr, const char ** src, TokenList * list, BasicOperator op_type, const char * cmp) {
+static int make_operator(current_read_data * cr, const char ** src, TokenList * list, BasicOperator op_type, const char * cmp) {
     if (starts_with(*src, cmp)) {
         list->tokens[list->cursor].type = OPERATOR_TOKEN;
         list->tokens[list->cursor].operator_type = op_type;
         list->tokens[list->cursor].char_in_line = cr->current_char;
         list->tokens[list->cursor].line_in_file = cr->current_line;
+        list->tokens[list->cursor].line_content = cr->line_begin;
         int len = strlen(cmp);
         list->tokens[list->cursor].text_len = len;
         cr->current_char += len;
@@ -197,20 +205,20 @@ int __make_operator(current_read_data * cr, const char ** src, TokenList * list,
     return 0;
 }
 
-int try_extract_operator(current_read_data * cr, const char ** src, TokenList * list) {
-    if (__make_operator(cr, src, list, ADD_OPERATOR, "+")) return 1;
-    if (__make_operator(cr, src, list, SUBTRACT_OPERATOR, "-")) return 1;
-    if (__make_operator(cr, src, list, MULTIPLY_OPERATOR, "*")) return 1;
-    if (__make_operator(cr, src, list, DIVIDE_OPERATOR, "/")) return 1;
-    if (__make_operator(cr, src, list, EQUALS_OPERATOR, "==")) return 1;
-    if (__make_operator(cr, src, list, ASSIGN_OPERATOR, "=")) return 1;
-    if (__make_operator(cr, src, list, SMALLER_THAN_OPERATOR, "<")) return 1;
-    if (__make_operator(cr, src, list, GREATER_THAN_OPERATOR, "<=")) return 1;
-    if (__make_operator(cr, src, list, SMALLER_EQUAL_OPERATOR, ">")) return 1;
-    if (__make_operator(cr, src, list, GREATER_EQUAL_OPERATOR, ">=")) return 1;
-    if (__make_operator(cr, src, list, NOT_EQUAL_OPERATOR, "!=")) return 1;
-    if (__make_operator(cr, src, list, LEFT_SHIFT_OPERATOR, "<<")) return 1;
-    if (__make_operator(cr, src, list, RIGHT_SHIFT_OPERATOR, ">>")) return 1;
+static int try_extract_operator(current_read_data * cr, const char ** src, TokenList * list) {
+    if (make_operator(cr, src, list, ADD_OPERATOR, "+")) return 1;
+    if (make_operator(cr, src, list, SUBTRACT_OPERATOR, "-")) return 1;
+    if (make_operator(cr, src, list, MULTIPLY_OPERATOR, "*")) return 1;
+    if (make_operator(cr, src, list, DIVIDE_OPERATOR, "/")) return 1;
+    if (make_operator(cr, src, list, EQUALS_OPERATOR, "==")) return 1;
+    if (make_operator(cr, src, list, ASSIGN_OPERATOR, "=")) return 1;
+    if (make_operator(cr, src, list, SMALLER_THAN_OPERATOR, "<")) return 1;
+    if (make_operator(cr, src, list, GREATER_THAN_OPERATOR, "<=")) return 1;
+    if (make_operator(cr, src, list, SMALLER_EQUAL_OPERATOR, ">")) return 1;
+    if (make_operator(cr, src, list, GREATER_EQUAL_OPERATOR, ">=")) return 1;
+    if (make_operator(cr, src, list, NOT_EQUAL_OPERATOR, "!=")) return 1;
+    if (make_operator(cr, src, list, LEFT_SHIFT_OPERATOR, "<<")) return 1;
+    if (make_operator(cr, src, list, RIGHT_SHIFT_OPERATOR, ">>")) return 1;
     return 0;
 }
 
@@ -239,18 +247,21 @@ int try_extract_any_paranthesis(current_read_data * cr, const char ** src, Token
     }
     list->tokens[list->cursor].char_in_line = cr->current_char;
     list->tokens[list->cursor].line_in_file = cr->current_line;
+    list->tokens[list->cursor].line_content = cr->line_begin;
     list->tokens[list->cursor].text_len = 1;
     ++*src;
     cr->current_char++;
     return 1;
 }
 
-int try_extract_seperator(current_read_data * cr, const char ** src, TokenList * list) {
+int try_extract_seperator(current_read_data* cr, const char** src, TokenList* list) {
     if (**src == ',') {
         list->tokens[list->cursor].type = SEPERATOR_TOKEN;
         list->tokens[list->cursor].char_in_line = cr->current_char;
         list->tokens[list->cursor].line_in_file = cr->current_line;
+        list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = 1;
+        ++*src;
         return 1;
     }
     return 0;
@@ -261,13 +272,14 @@ int try_extract_dot(current_read_data * cr, const char ** src, TokenList * list)
         list->tokens[list->cursor].type = DOT_TOKEN;
         list->tokens[list->cursor].char_in_line = cr->current_char;
         list->tokens[list->cursor].line_in_file = cr->current_line;
+        list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = 1;
         return 1;
     }
     return 0;
 }
 
-unsigned int __err(current_read_data * cr, const char ** src) {
+unsigned int t_err(current_read_data * cr, const char ** src) {
     unsigned int len = 0;
     unsigned int off = 0;
     while (**src && **src != '\n' && !isspace((*src)[len])) len++;
@@ -285,12 +297,12 @@ unsigned int __err(current_read_data * cr, const char ** src) {
         }
     }
     str_buffer[len + off] = 0;
-    make_error("<some file>", cr->line_begin, cr->current_line, cr->current_char, len, "unrecognized token \"%s\"", str_buffer);
+    make_error(cr->line_begin, cr->current_line, cr->current_char, len, "unrecognized token \"%s\"", str_buffer);
     free(str_buffer);
     return len;
 }
 
-int extract_next(current_read_data * cr, StringDict * dict, const char ** src, TokenList * list) {
+int extract_next(current_read_data* cr, StringDict* dict, const char** src, TokenList* list) {
     while (isspace(**src) && **src != '\n') {
         cr->current_char++;
         ++*src;
@@ -298,11 +310,11 @@ int extract_next(current_read_data * cr, StringDict * dict, const char ** src, T
     if (try_extract_optional_end(cr, src, list)) return 1;
     if (try_extract_identifier_or_keyword(cr, dict, src, list)) return 1;
     if (try_extract_fixed_value(cr, src, list)) return 1;
-    if (try_extract_operator(cr, src, list)) return 1;
     if (try_extract_any_paranthesis(cr, src, list)) return 1;
+    if (try_extract_operator(cr, src, list)) return 1;
     if (try_extract_seperator(cr, src, list)) return 1;
     if (try_extract_dot(cr, src, list)) return 1;
-    unsigned int len = __err(cr, src);
+    unsigned int len = t_err(cr, src);
     cr->current_char += len;
     *src += len;
     return 0;
@@ -310,26 +322,25 @@ int extract_next(current_read_data * cr, StringDict * dict, const char ** src, T
 
 void init_keyword_dict(StringDict * dict) {
     string_dict_init(dict);
-    string_dict_put(dict, "main", "main");
-    string_dict_put(dict, "public", "public");
-    string_dict_put(dict, "protected", "protected");
-    string_dict_put(dict, "private", "private");
-    string_dict_put(dict, "class", "class");
-    string_dict_put(dict, "static", "static");
+    string_dict_put(dict, "public", (void*) K_PUBLIC_TOKEN);
+    string_dict_put(dict, "protected", (void*) K_PROTECTED_TOKEN);
+    string_dict_put(dict, "private", (void*) K_PRIVATE_TOKEN);
+    string_dict_put(dict, "class", (void*) K_CLASS_TOKEN);
+    string_dict_put(dict, "static", (void*) K_STATIC_TOKEN);
 
-    string_dict_put(dict, "if", "if");
-    string_dict_put(dict, "for", "for");
-    string_dict_put(dict, "while", "while");
-    string_dict_put(dict, "break", "break");
-    string_dict_put(dict, "return", "return");
-    string_dict_put(dict, "switch", "switch");
-    string_dict_put(dict, "case", "case");
-    string_dict_put(dict, "default", "default");
+    string_dict_put(dict, "if", (void*) C_IF_TOKEN);
+    string_dict_put(dict, "for", (void*) C_FOR_TOKEN);
+    string_dict_put(dict, "while", (void*) C_WHILE_TOKEN);
+    string_dict_put(dict, "break", (void*) C_BREAK_TOKEN);
+    string_dict_put(dict, "return", (void*) C_RETURN_TOKEN);
+    string_dict_put(dict, "switch", (void*) C_SWITCH_TOKEN);
+    string_dict_put(dict, "case", (void*) C_CASE_TOKEN);
+    string_dict_put(dict, "default", (void*) C_DEFAULT_TOKEN);
 }
 
 TokenList lex(const char * src) {
-    StringDict dict;
-    init_keyword_dict(&dict);
+    StringDict keyword_dict;
+    init_keyword_dict(&keyword_dict);
     unsigned long capacity = 128;
     TokenList list = {
         .tokens = malloc(sizeof(Token) * capacity),
@@ -341,11 +352,11 @@ TokenList lex(const char * src) {
         .current_char = 1
     };
     while (*src) {
-        if (extract_next(&cr, &dict, &src, &list)) {
+        if (extract_next(&cr, &keyword_dict, &src, &list)) {
             capacity = advance(&list, capacity);
         }
     }
-    string_dict_destroy(&dict);
+    string_dict_destroy(&keyword_dict);
     list.tokens = realloc(list.tokens, sizeof(Token) * list.cursor);
     return list;
 }

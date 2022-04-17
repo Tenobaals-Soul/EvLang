@@ -1,4 +1,5 @@
 {
     "files.associations": {
+        "string_dict.h": "c"
     }
 }

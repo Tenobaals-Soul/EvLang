@@ -18,12 +18,19 @@ typedef enum BasicOperator {
 } BasicOperator;
 
 typedef enum TokenType {
-    OPTIONAL_END_TOKEN, KEYWORD_TOKEN, IDENTIFIER_TOKEN,
+    OPTIONAL_END_TOKEN, IDENTIFIER_TOKEN,
     FIXED_VALUE_TOKEN, OPERATOR_TOKEN,
     OPEN_PARANTHESIS_TOKEN, CLOSE_PARANTHESIS_TOKEN,
     OPEN_BLOCK_TOKEN, CLOSE_BLOCK_TOKEN,
     OPEN_INDEX_TOKEN, CLOSE_INDEX_TOKEN,
-    SEPERATOR_TOKEN, DOT_TOKEN
+    SEPERATOR_TOKEN, DOT_TOKEN,
+    K_PUBLIC_TOKEN, K_PROTECTED_TOKEN,
+    K_PRIVATE_TOKEN, K_CLASS_TOKEN, K_DERIVES_TOKEN,
+    K_STATIC_TOKEN,
+    C_IF_TOKEN, C_FOR_TOKEN, C_WHILE_TOKEN,
+    C_BREAK_TOKEN, C_RETURN_TOKEN,
+    C_SWITCH_TOKEN, C_CASE_TOKEN,
+    C_DEFAULT_TOKEN
 } TokenType;
 
 typedef struct Token {
@@ -31,8 +38,8 @@ typedef struct Token {
     unsigned int char_in_line;
     unsigned int line_in_file;
     unsigned int text_len;
+    const char * line_content;
     union {
-        char * keyword;
         char * identifier;
         struct {
             FixedDataType type;
@@ -41,7 +48,7 @@ typedef struct Token {
                 long double floating;
                 bool boolean;
                 char character;
-                char * string;
+                char* string;
             } value;
         } fixed_value;
         BasicOperator operator_type;
@@ -50,10 +57,12 @@ typedef struct Token {
 
 typedef struct TokenList {
     Token * tokens;
-    unsigned long cursor;
+    unsigned int cursor;
 } TokenList;
 
-void make_error(const char * file_name, const char * line, unsigned int line_no, unsigned int char_no, 
+void set_enviroment(const char* enviroment);
+
+void make_error(const char * line, unsigned int line_no, unsigned int char_no, 
         unsigned int len, const char * error_message, ...);
 
 #endif
