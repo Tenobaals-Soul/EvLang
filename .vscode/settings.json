@@ -1,5 +1,6 @@
 {
     "files.associations": {
-        "string_dict.h": "c"
+        "string_dict.h": "c",
+        "*.tcc": "c"
     }
 }
