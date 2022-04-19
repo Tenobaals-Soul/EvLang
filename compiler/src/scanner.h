@@ -4,31 +4,38 @@
 #include"compiler.h"
 
 typedef enum EntryType {
-    ENTRY_CLASS, ENTRY_METHOD_TABLE, ENTRY_VARIABLE, ENTRY_METHOD
+    ERROR_TYPE, ENTRY_CLASS, ENTRY_METHOD_TABLE, ENTRY_VARIABLE, ENTRY_METHOD
 } EntryType;
 
 typedef enum Accessability {
     PUBLIC, PROTECTED, PRIVATE
 } Accessability;
 
-typedef struct Entry {
+typedef struct StackedData {
     EntryType type;
+    char* name;
     unsigned int line_no;
     Accessability accessability;
+    char* var_type;
+    bool is_static;
     union {
-        char* var_type;
-        StringDict* class_content;
+        struct {
+            StringDict* class_content;
+            char* derives_from;
+            char** implements;
+            unsigned int implements_len;
+        } class;
         struct {
             char* return_type;
             char** args;
-        };
+        } method;
         struct {
             char* return_type;
             unsigned int len;
-            struct Entry** methods;
-        } table;
+            struct StackedData** methods;
+        } method_table;
     };
-} Entry;
+} StackedData;
 
 StringDict * scan_file(TokenList tokens);
 

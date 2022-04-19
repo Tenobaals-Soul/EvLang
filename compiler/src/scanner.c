@@ -3,211 +3,52 @@
 #include<string.h>
 #include<stdlib.h>
 #include<stdbool.h>
+#include<stdio.h>
+#include<memory.h>
 
-bool get_class_content();
+#define JUMPMAP_HANDLER_ARGS StringDict* class_contnent, StackedData** stacked_data, TokenList tokens, unsigned int* index
 
-bool skip_optional_ends(TokenList tokens, unsigned int* i) {
-    if (*i >= tokens.cursor) return true;
-    while (tokens.tokens[*i].type == OPTIONAL_END_TOKEN) {
-        if (*i >= tokens.cursor) return true;
-        ++*i;
-    }
-    if (*i >= tokens.cursor) return true;
-    return false;
+struct jump_map {
+    struct parse_tree_s* what_if;
+    struct parse_tree_s* after_substate;
+    bool (*on_found)(JUMPMAP_HANDLER_ARGS);
+};
+
+typedef struct parse_tree_s {
+    struct jump_map default_jump;
+    struct jump_map jump_mapping[64];
+} parse_tree_t;
+
+#define is_null(item) (memcmp(&item, (char[sizeof(item)]) {0}, sizeof(item)) == 0)
+
+bool exit_substate(JUMPMAP_HANDLER_ARGS) {
+    (void) class_contnent;
+    (void) stacked_data;
+    (void) tokens;
+    (void) index;
+    printf("this function should not be called");
+    exit(1);
 }
 
-Accessability get_accessability(TokenList tokens, unsigned int* i) {
-    if (tokens.tokens[*i].type == K_PRIVATE_TOKEN) {
-        ++*i;
+Accessability get_accessability(TokenList tokens, unsigned int i) {
+    if (tokens.tokens[i].type == K_PRIVATE_TOKEN) {
         return PRIVATE;
     }
-    else if (tokens.tokens[*i].type == K_PUBLIC_TOKEN) {
-        ++*i;
+    else if (tokens.tokens[i].type == K_PUBLIC_TOKEN) {
         return PUBLIC;
     }
-    else if (tokens.tokens[*i].type == K_PROTECTED_TOKEN) {
-        ++*i;
+    else if (tokens.tokens[i].type == K_PROTECTED_TOKEN) {
         return PROTECTED;
     }
     else {
-        return PROTECTED;
+        printf("fatal internal error - non matching token types - %d", __LINE__);
+        exit(1);
     }
 }
 
-Entry* get_class(TokenList tokens, unsigned int* i, char** name) {
-    unsigned int new_i = *i;
-    if (new_i + 4 >= tokens.cursor) return NULL;
-    Entry* current_class = malloc(sizeof(Entry));
-    current_class->line_no = tokens.tokens[*i].line_in_file;
-    current_class->type = ENTRY_CLASS;
-    current_class->accessability = get_accessability(tokens, &new_i);
-    
-    if (skip_optional_ends(tokens, &new_i)) return false;
-    if (tokens.tokens[new_i].type != K_CLASS_TOKEN) {
-        free(current_class);
-        return NULL;
-    }
-    new_i++;
-    if (skip_optional_ends(tokens, &new_i)) return false;
-    if (tokens.tokens[new_i].type != IDENTIFIER_TOKEN) {
-        free(current_class);
-        return NULL;
-    }
-    *name = tokens.tokens[new_i].identifier;
-    new_i++;
-    if (skip_optional_ends(tokens, &new_i)) return false;
-    current_class->class_content = malloc(sizeof(StringDict));
-    string_dict_init(current_class->class_content);
-    if (tokens.tokens[new_i].type == K_DERIVES_TOKEN) {
-        new_i++;
-        if (skip_optional_ends(tokens, &new_i)) return false;
-        if (tokens.tokens[new_i].type != IDENTIFIER_TOKEN) {
-            string_dict_destroy(current_class->class_content);
-            free(current_class);
-            return NULL;
-        }
-        string_dict_put(current_class->class_content, "super", tokens.tokens[new_i].identifier);
-        new_i++;
-        if (skip_optional_ends(tokens, &new_i)) return false;
-    }
-    if (!get_class_content(current_class->class_content, tokens, &new_i)) {
-        string_dict_destroy(current_class->class_content);
-        free(current_class->class_content);
-        free(current_class);
-        return NULL;
-    }
-    *i = new_i;
-    return current_class;
-}
-
-Entry* get_variable(TokenList tokens, unsigned int* i, char** name) {
-    unsigned int new_i = *i;
-    if (new_i + 2 > tokens.cursor) return NULL;
-    Entry* current_variable = malloc(sizeof(Entry));
-    current_variable->line_no = tokens.tokens[*i].line_in_file;
-    current_variable->type = ENTRY_VARIABLE;
-    current_variable->accessability = get_accessability(tokens, &new_i);
-    if (tokens.tokens[new_i++].type != IDENTIFIER_TOKEN) {
-        free(current_variable);
-        return NULL;
-    }
-    current_variable->var_type = tokens.tokens[new_i].identifier;
-    if (tokens.tokens[new_i].type != IDENTIFIER_TOKEN) {
-        free(current_variable);
-        return NULL;
-    }
-    *name = tokens.tokens[new_i++].identifier;
-    *i = new_i;
-    return current_variable;
-}
-
-char* get_function_argument(TokenList tokens, unsigned int* i) {
-    unsigned int new_i = *i;
-    if (new_i + 2 >= tokens.cursor) return NULL;
-    if (tokens.tokens[new_i].type != IDENTIFIER_TOKEN) {
-        make_error(tokens.tokens[new_i].line_content, tokens.tokens[new_i].line_in_file,
-            tokens.tokens[new_i].char_in_line, tokens.tokens[new_i].text_len, "expected a type name");
-        return NULL;
-    }
-    new_i++;
-    if (skip_optional_ends(tokens, &new_i)) return false;
-    if (tokens.tokens[new_i].type != IDENTIFIER_TOKEN) {
-        make_error(tokens.tokens[new_i].line_content, tokens.tokens[new_i].line_in_file,
-            tokens.tokens[new_i].char_in_line, tokens.tokens[new_i].text_len, "expected am identifier");
-        return NULL;
-    }
-    new_i++;
-    if (skip_optional_ends(tokens, &new_i)) return false;
-    *i = new_i;
-    return tokens.tokens[new_i - 1].identifier;
-}
-
-bool extract_parameters(TokenList tokens, unsigned int* i, char*** args, int* arg_len) {
-    unsigned int new_i = *i;
-    if (skip_optional_ends(tokens, &new_i)) return false;
-    if (tokens.tokens[new_i].type != OPEN_PARANTHESIS_TOKEN) {
-        return false;
-    }
-    new_i++;
-    if (skip_optional_ends(tokens, &new_i)) return false;
-    if (tokens.tokens[new_i].type != CLOSE_PARANTHESIS_TOKEN) {
-        while (true) {
-            char* arg;
-            if (!(arg = get_function_argument(tokens, &new_i))) {
-                return false;
-            }
-            ++*arg_len;
-            *args = realloc(*args, *arg_len * sizeof(char*));
-            (*args)[(*arg_len) - 1] = arg;
-            if (tokens.tokens[new_i].type != SEPERATOR_TOKEN) {
-                break;
-            }
-            else {
-                new_i++;
-            }
-        }
-        if (tokens.tokens[new_i].type != CLOSE_PARANTHESIS_TOKEN) {
-            if (*args) free(*args);
-            return false;
-        }
-    }
-    *args = realloc(*args, (1 + *arg_len) * sizeof(char*));
-    (*args)[*arg_len] = NULL;
-    *i = new_i + 1;
-    return true;
-}
-
-Entry* get_method(TokenList tokens, unsigned int* i, char** name) {
-    unsigned int new_i = *i;
-    int arg_len = 0;
-    char** args = NULL;
-    if (new_i + 4 > tokens.cursor) return NULL;
-    Entry* current_method = malloc(sizeof(Entry));
-    current_method->line_no = tokens.tokens[new_i].line_in_file;
-    current_method->type = ENTRY_METHOD;
-    current_method->accessability = get_accessability(tokens, &new_i);
-    if (tokens.tokens[new_i].type != IDENTIFIER_TOKEN) {
-        free(current_method);
-        return NULL;
-    }
-    current_method->return_type = tokens.tokens[new_i].identifier;
-    new_i++;
-    if (tokens.tokens[new_i].type != IDENTIFIER_TOKEN) {
-        free(current_method);
-        return NULL;
-    }
-    *name = tokens.tokens[new_i].identifier;
-    new_i++;
-    if (!extract_parameters(tokens, &new_i, &args, &arg_len)) {
-        free(current_method);
-        return NULL;
-    }
-    if (skip_optional_ends(tokens, &new_i)) {
-        free(args);
-        free(current_method);
-        return NULL;
-    }
-    if (tokens.tokens[new_i].type != OPEN_BLOCK_TOKEN) {
-        free(args);
-        free(current_method);
-        return NULL;
-    }
-    unsigned int layer = 1;
-    while (layer) {
-        new_i++;
-        if (tokens.cursor <= *i) return false;
-        if (tokens.tokens[new_i].type == OPEN_BLOCK_TOKEN) layer++;
-        else if (tokens.tokens[new_i].type == CLOSE_BLOCK_TOKEN) layer--;
-    }
-    new_i++;
-    current_method->args = args;
-    *i = new_i;
-    return current_method;
-}
-
-bool append_method(StringDict* class_content, Token* pos, Entry* entry_found, char* name) {
-    Entry* found = string_dict_get(class_content, name);
-    Entry* method_table;
+bool append_method(StringDict* class_content, Token* pos, StackedData* entry_found, char* name) {
+    StackedData* found = string_dict_get(class_content, name);
+    StackedData* method_table;
     if (found) {
         if (found->type != ENTRY_METHOD_TABLE) {
             make_error(pos->line_content, pos->line_in_file, 0, ~0, "\"%s\" is already defined in line %u.", found->line_no);
@@ -216,72 +57,222 @@ bool append_method(StringDict* class_content, Token* pos, Entry* entry_found, ch
         method_table = found;
     }
     else {
-        method_table = malloc(sizeof(Entry));
+        method_table = malloc(sizeof(StackedData));
         method_table->type = ENTRY_METHOD_TABLE;
         method_table->accessability = PUBLIC;
-        method_table->table.len = 0;
-        method_table->table.methods = NULL;
+        method_table->method_table.len = 0;
+        method_table->method_table.methods = NULL;
         string_dict_put(class_content, name, method_table);
     }
-    method_table->table.len++;
-    method_table->table.methods = realloc(method_table->table.methods, method_table->table.len * sizeof(Entry*));
-    method_table->table.methods[method_table->table.len - 1] = entry_found;
+    method_table->method_table.len++;
+    method_table->method_table.methods = realloc(method_table->method_table.methods, method_table->method_table.len * sizeof(StackedData*));
+    method_table->method_table.methods[method_table->method_table.len - 1] = entry_found;
     return true;
+}
+
+bool throw_no_class_def(JUMPMAP_HANDLER_ARGS) {
+    (void) stacked_data; (void) class_contnent;
+    Token* token_with_error = tokens.tokens + *index;
+    make_error(token_with_error->line_content, token_with_error->line_in_file,
+        token_with_error->char_in_line, token_with_error->text_len,
+        "files can only contain meta information or classes or wrap this file");
+    return false;
+}
+
+bool throw_expected_name(JUMPMAP_HANDLER_ARGS) {
+    (void) stacked_data; (void) class_contnent;
+    Token* token_with_error = tokens.tokens + *index;
+    make_error(token_with_error->line_content, token_with_error->line_in_file,
+        token_with_error->char_in_line, token_with_error->text_len,
+        "expected a name here");
+    return false;
+}
+
+bool throw_unexpected_token(JUMPMAP_HANDLER_ARGS) {
+    (void) stacked_data; (void) class_contnent;
+    Token* token_with_error = tokens.tokens + *index;
+    make_error(token_with_error->line_content, token_with_error->line_in_file,
+        token_with_error->char_in_line, token_with_error->text_len,
+        "unexpected token");
+    return false;
+}
+
+bool throw_expected_class(JUMPMAP_HANDLER_ARGS) {
+    (void) stacked_data; (void) class_contnent;
+    Token* token_with_error = tokens.tokens + *index;
+    make_error(token_with_error->line_content, token_with_error->line_in_file,
+        token_with_error->char_in_line, token_with_error->text_len,
+        "expected a class here");
+    return false;
+}
+
+bool set_accessibility_handler(JUMPMAP_HANDLER_ARGS) {
+    (void) class_contnent;
+    StackedData* temp = *stacked_data;
+    temp->accessability = get_accessability(tokens, *index);
+    return true;
+}
+
+bool set_type_class_handler(JUMPMAP_HANDLER_ARGS) {
+    (void) class_contnent; (void) index; (void) tokens;
+    StackedData* temp = *stacked_data;
+    temp->class.class_content = malloc(sizeof(StringDict));
+    string_dict_init(temp->class.class_content);
+    temp->type = ENTRY_CLASS;
+    return true;
+}
+
+bool set_name_handler(JUMPMAP_HANDLER_ARGS) {
+    (void) class_contnent; (void) index; (void) tokens;
+    StackedData* temp = *stacked_data;
+    temp->name = tokens.tokens[*index].identifier;
+    return true;
+}
+
+bool set_derive_from(JUMPMAP_HANDLER_ARGS) {
+    (void) class_contnent; (void) index; (void) tokens;
+    StackedData* temp = *stacked_data;
+    temp->class.derives_from = tokens.tokens[*index].identifier;
+    return true;
+}
+
+bool append_implement_from(JUMPMAP_HANDLER_ARGS) {
+    (void) class_contnent; (void) index; (void) tokens;
+    StackedData* temp = *stacked_data;
+    temp->class.implements_len++;
+    temp->class.implements = realloc(temp->class.implements, sizeof(char*) * temp->class.implements_len);
+    temp->class.implements[temp->class.implements_len] = tokens.tokens[*index].identifier;
+    return true;
+}
+
+// general stuff
+parse_tree_t inner_block;
+
+// parse class
+parse_tree_t on_enter_file, get_class_found_accessibility,
+    get_class_found_keyword, get_class_found_name, get_class_found_derive,
+    get_class_after_derive, get_class_found_implements,
+    get_class_after_implement, get_class_found_seperator, get_class_block_start;
+
+parse_tree_t on_enter_file = {
+    .default_jump = { NULL, NULL, throw_no_class_def },
+    .jump_mapping = {{0}},
+    .jump_mapping[K_PUBLIC_TOKEN] = { &get_class_found_accessibility, NULL, set_accessibility_handler },
+    .jump_mapping[K_PROTECTED_TOKEN] = { &get_class_found_accessibility, NULL, set_accessibility_handler },
+    .jump_mapping[K_PRIVATE_TOKEN] = { &get_class_found_accessibility, NULL, set_accessibility_handler },
+    .jump_mapping[K_CLASS_TOKEN] = { &get_class_found_keyword, NULL, set_type_class_handler }
+};
+
+parse_tree_t get_class_found_accessibility = {
+    .default_jump = { NULL, NULL, throw_unexpected_token },
+    .jump_mapping = {{0}},
+    .jump_mapping[K_CLASS_TOKEN] = { &get_class_found_keyword, NULL, set_type_class_handler }
+};
+
+parse_tree_t get_class_found_keyword = {
+    .default_jump = { NULL, NULL, throw_expected_name },
+    .jump_mapping = {{0}},
+    .jump_mapping[IDENTIFIER_TOKEN] = {&get_class_found_name, NULL, set_name_handler }
+};
+
+parse_tree_t get_class_found_name = {
+    .default_jump = { NULL, NULL, throw_unexpected_token },
+    .jump_mapping = {{0}},
+    .jump_mapping[K_DERIVES_TOKEN] = { &get_class_found_derive, NULL, NULL },
+    .jump_mapping[K_IMPLEMENTS_TOKEN] = { &get_class_found_implements, NULL, NULL },
+    .jump_mapping[OPEN_BLOCK_TOKEN] = { &get_class_block_start, NULL, NULL }
+};
+
+parse_tree_t get_class_found_derive = {
+    .default_jump = { NULL, NULL, throw_expected_class },
+    .jump_mapping = {{0}},
+    .jump_mapping[IDENTIFIER_TOKEN] = { &get_class_after_derive, NULL, set_derive_from }
+};
+
+parse_tree_t get_class_after_derive = {
+    .default_jump = { NULL, NULL, throw_unexpected_token },
+    .jump_mapping = {{0}},
+    .jump_mapping[K_IMPLEMENTS_TOKEN] = { &get_class_found_implements, NULL, NULL },
+    .jump_mapping[OPEN_BLOCK_TOKEN] = { &get_class_block_start, NULL, NULL }
+};
+
+parse_tree_t get_class_found_implements = {
+    .default_jump = { NULL, NULL, throw_expected_class },
+    .jump_mapping = {{0}},
+    .jump_mapping[IDENTIFIER_TOKEN] = {&get_class_after_implement, NULL, append_implement_from }
+};
+
+parse_tree_t get_class_after_implement = {
+    .default_jump = { NULL, NULL, throw_unexpected_token },
+    .jump_mapping = {{0}},
+    .jump_mapping[SEPERATOR_TOKEN] = { &get_class_found_implements, NULL, NULL },
+    .jump_mapping[OPEN_BLOCK_TOKEN] = { &get_class_block_start, NULL, NULL }
+};
+
+parse_tree_t get_class_block_start = {
+    .default_jump = { &get_class_block_start, NULL, NULL },
+    .jump_mapping = {{0}},
+    // here variables, methods and inner classes
+    .jump_mapping[CLOSE_BLOCK_TOKEN] = { NULL, NULL, exit_substate }
+};
+
+parse_tree_t inner_block = {
+    .default_jump = { &inner_block, NULL, NULL },
+    .jump_mapping = {{0}},
+    .jump_mapping[OPEN_BLOCK_TOKEN] = { &inner_block, &inner_block, NULL },
+    .jump_mapping[CLOSE_BLOCK_TOKEN] = { NULL, NULL, exit_substate }
+};
+
+StackedData* empty_base_class_entry() {
+    StackedData* entry = calloc(sizeof(StackedData), 1);
+    entry->accessability = PROTECTED;
+    entry->class.derives_from = "Object";
+    entry->class.implements = NULL;
+    entry->class.implements = 0;
+    entry->is_static = false;
+    return entry;
+}
+
+bool scan_file_internal(StringDict* class_content, TokenList tokens,
+    parse_tree_t* current_node, unsigned int* index) {
+    StackedData* stacked_data = empty_base_class_entry();
+    while (*index < tokens.cursor) {
+        struct jump_map* jump_to = &current_node->jump_mapping[tokens.tokens[*index].type];
+        if (jump_to->on_found == exit_substate) {
+            if (stacked_data->name) {
+                string_dict_put(class_content, stacked_data->name, stacked_data);
+            }
+            return true;
+        }
+        if (is_null(*jump_to)) {
+            jump_to = &current_node->default_jump;
+        }
+        StackedData* o_stacked_data = stacked_data;
+        if (jump_to->on_found) {
+            if (!jump_to->on_found(class_content, &stacked_data, tokens, index)) {
+                free(stacked_data);
+                return false;
+            }
+        }
+        if (stacked_data == NULL) free(o_stacked_data);
+        current_node = jump_to->what_if ? jump_to->what_if : current_node;
+        ++*index;
+    }
+    if (stacked_data) free(stacked_data);
+    return false;
 }
 
 StringDict* scan_file(TokenList tokens) {
+    parse_tree_t* current_node = &on_enter_file;
     StringDict* out = malloc(sizeof(StringDict));
+    unsigned int index = 0;
     string_dict_init(out);
-    for (unsigned int i = 0; i < tokens.cursor; i++) {
-        if (skip_optional_ends(tokens, &i)) return out;
-        char* name;
-        Entry* class_found = get_class(tokens, &i, &name);
-        if (class_found == NULL) {
+    while (index + 1 < tokens.cursor) {
+        if (!scan_file_internal(out, tokens, current_node, &index)) {
+            string_dict_destroy(out);
             free(out);
             return NULL;
         }
-        string_dict_put(out, name, class_found);
     }
     return out;
-}
-
-bool get_class_content(StringDict* class_content, TokenList tokens, unsigned int* i) {
-    unsigned int new_i = *i + 1;
-    if (new_i >= tokens.cursor) return true;
-    if (skip_optional_ends(tokens, &new_i)) return false;
-    while(tokens.tokens[new_i].type != CLOSE_BLOCK_TOKEN) {
-        Entry* new_entry;
-        char* name;
-        unsigned int old_i = new_i;
-        if ((new_entry = get_class(tokens, &new_i, &name))) {
-            if (string_dict_get(class_content, name)) {
-                make_error(tokens.tokens[old_i].line_content, tokens.tokens[old_i].line_in_file,
-                        tokens.tokens[old_i].char_in_line, tokens.tokens[old_i].text_len, "redefinition of symbol \"%s\"", name);
-                return false;
-            }
-            string_dict_put(class_content, name, new_entry);
-        }
-        else if ((new_entry = get_method(tokens, &new_i, &name))) {
-            if (!append_method(class_content, tokens.tokens + old_i, new_entry, name)) {
-                return false;
-            }
-        }
-        else if ((new_entry = get_variable(tokens, &new_i, &name))) {
-            if (string_dict_get(class_content, name)) {
-                make_error(tokens.tokens[old_i].line_content, tokens.tokens[old_i].line_in_file,
-                        tokens.tokens[old_i].char_in_line, tokens.tokens[old_i].text_len, "redefinition of symbol \"%s\"", name);
-                return false;
-            }
-            string_dict_put(class_content, name, new_entry);
-        }
-        /*else if (new_entry = get_lambda_function(tokens, &new_i, &name, &args)) {
-            if (!append_method(class_content, new_entry, name, args)) {
-                return false;
-            }
-        }*/
-        else return false;
-        if (skip_optional_ends(tokens, &new_i)) break;
-    }
-    *i = new_i;
-    return true;
 }

@@ -1,11 +1,2 @@
 class ExampleClass {
-    void print(any a, any b) {}
-    void print(any a, any b, any c) {}
-    int size
-    int main() {
-        int var1 = 5
-        int var2 = 5 * 1
-        print(var1, var2)
-    }
-    int main(
 }

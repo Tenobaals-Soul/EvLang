@@ -163,29 +163,29 @@ void print_single_result_internal(void* enviroment, const char* name, void* val)
     char indent[layer * 4 + 1];
     memset(indent, ' ', layer * 4);
     indent[layer * 4] = 0;
-    Entry* entry = val;
+    StackedData* entry = val;
     switch (entry->type) {
     case ENTRY_CLASS:;
         layer++;
-        printf("%sclass %s with %d entrys:\n", indent, name, entry->class_content->count);
-        string_dict_complex_foreach(entry->class_content, print_single_result_internal, &layer);
+        printf("%sclass %s with %d entrys:\n", indent, name, entry->class.class_content->count);
+        string_dict_complex_foreach(entry->class.class_content, print_single_result_internal, &layer);
         break;
     case ENTRY_METHOD:
-        printf("%s%s %s(", indent, entry->return_type, name);
+        printf("%s%s %s(", indent, entry->method.return_type, name);
         int i;
-        for (i = 0; entry->args[i] && entry->args[i + 1]; i++) {
-            printf("%s, ", entry->args[i]);
+        for (i = 0; entry->method.args[i] && entry->method.args[i + 1]; i++) {
+            printf("%s, ", entry->method.args[i]);
         }
-        if (entry->args[i]) {
-            printf("%s", entry->args[i]);
+        if (entry->method.args[i]) {
+            printf("%s", entry->method.args[i]);
         }
         printf(")\n");
         break;
     case ENTRY_METHOD_TABLE:
-        printf("%smethod %s with %d overloaded variant(s):\n", indent, name, entry->table.len);
+        printf("%smethod %s with %d overloaded variant(s):\n", indent, name, entry->method_table.len);
         layer++;
-        for (unsigned int i = 0; i < entry->table.len; i++) {
-            print_single_result_internal(&layer, name, entry->table.methods[i]);
+        for (unsigned int i = 0; i < entry->method_table.len; i++) {
+            print_single_result_internal(&layer, name, entry->method_table.methods[i]);
         }
         break;
     case ENTRY_VARIABLE:
@@ -198,7 +198,7 @@ void print_single_result_internal(void* enviroment, const char* name, void* val)
 }
 
 void print_single_result(const char* key, void* val) {
-    Entry* entry = val;
+    StackedData* entry = val;
     int env = 0;
     print_single_result_internal(&env, key, entry);
 }
@@ -207,26 +207,35 @@ void print_scan_result(StringDict* content) {
     string_dict_foreach(content, print_single_result);
 }
 
-void free_scan_result(const char* key, void* val) {
+void free_single_scan_result(const char* key, void* val) {
     (void) key;
-    Entry* entry = val;
+    StackedData* entry = val;
     switch (entry->type) {
     case ENTRY_CLASS:
-        string_dict_foreach(entry->class_content, free_scan_result);
-        free(entry->class_content);
+        string_dict_foreach(entry->class.class_content, free_single_scan_result);
+        free(entry->class.class_content);
         break;
     case ENTRY_METHOD:
-        free(entry->args);
+        free(entry->method.args);
         break;
     case ENTRY_METHOD_TABLE:
-        for (unsigned int i = 0; i < entry->table.len; i++) {
-            free_scan_result(NULL, entry->table.methods[i]);
+        for (unsigned int i = 0; i < entry->method_table.len; i++) {
+            free_single_scan_result(NULL, entry->method_table.methods[i]);
         }
         break;
     case ENTRY_VARIABLE:
         break;
+    case ERROR_TYPE:
+        printf("detected fatal internal error");
+        exit(1);
+        break;
     }
     free(entry);
+}
+
+void free_scan_result(const char* key, void* val) {
+    (void) key;
+    string_dict_foreach(val, free_single_scan_result);
 }
 
 int main(int argc, char** argv) {

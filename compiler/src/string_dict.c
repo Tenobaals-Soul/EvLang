@@ -3,9 +3,9 @@
 #include"string_dict.h"
 
 struct string_dict_item {
-    char * key;
-    void * val;
-    struct string_dict_item * next;
+    char* key;
+    void* val;
+    struct string_dict_item* next;
 };
 
 void string_dict_init(StringDict * dict) {
