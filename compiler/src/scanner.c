@@ -6,7 +6,7 @@
 #include<stdio.h>
 #include<memory.h>
 
-#define JUMPMAP_HANDLER_ARGS StringDict* class_contnent, StackedData** stacked_data, TokenList tokens, unsigned int* index
+#define JUMPMAP_HANDLER_ARGS StringDict** class_contnent, StackedData** stacked_data, TokenList tokens, unsigned int* index
 
 struct jump_map {
     struct parse_tree_s* what_if;
@@ -136,6 +136,12 @@ bool set_derive_from(JUMPMAP_HANDLER_ARGS) {
     return true;
 }
 
+bool set_static_handler(JUMPMAP_HANDLER_ARGS) {
+    (void) class_contnent; (void) index; (void) tokens;
+    (*stacked_data)->is_static = true;
+    return true;
+}
+
 bool append_implement_from(JUMPMAP_HANDLER_ARGS) {
     (void) class_contnent; (void) index; (void) tokens;
     StackedData* temp = *stacked_data;
@@ -154,13 +160,18 @@ parse_tree_t on_enter_file, get_class_found_accessibility,
     get_class_after_derive, get_class_found_implements,
     get_class_after_implement, get_class_found_seperator, get_class_block_start;
 
+parse_tree_t found_accessibility, found_static, found_name, found_function_def_start,
+    found_function_arg_type, found_function_arg_name, found_function_arg_seperator,
+    found_function_arg_def_end, found_text_start, found_var_operator;
+
 parse_tree_t on_enter_file = {
     .default_jump = { NULL, NULL, throw_no_class_def },
-    .jump_mapping = {{0}},
-    .jump_mapping[K_PUBLIC_TOKEN] = { &get_class_found_accessibility, NULL, set_accessibility_handler },
-    .jump_mapping[K_PROTECTED_TOKEN] = { &get_class_found_accessibility, NULL, set_accessibility_handler },
-    .jump_mapping[K_PRIVATE_TOKEN] = { &get_class_found_accessibility, NULL, set_accessibility_handler },
-    .jump_mapping[K_CLASS_TOKEN] = { &get_class_found_keyword, NULL, set_type_class_handler }
+    .jump_mapping = {
+        [K_PUBLIC_TOKEN] = { &get_class_found_accessibility, NULL, set_accessibility_handler },
+        [K_PROTECTED_TOKEN] = { &get_class_found_accessibility, NULL, set_accessibility_handler },
+        [K_PRIVATE_TOKEN] = { &get_class_found_accessibility, NULL, set_accessibility_handler },
+        [K_CLASS_TOKEN] = { &get_class_found_keyword, NULL, set_type_class_handler }
+    }
 };
 
 parse_tree_t get_class_found_accessibility = {
@@ -212,7 +223,14 @@ parse_tree_t get_class_after_implement = {
 parse_tree_t get_class_block_start = {
     .default_jump = { &get_class_block_start, NULL, NULL },
     .jump_mapping = {{0}},
-    // here variables, methods and inner classes
+    .jump_mapping[K_PUBLIC_TOKEN] = { &get_class_found_accessibility, NULL, set_accessibility_handler },
+    .jump_mapping[K_PROTECTED_TOKEN] = { &get_class_found_accessibility, NULL, set_accessibility_handler },
+    .jump_mapping[K_PRIVATE_TOKEN] = { &get_class_found_accessibility, NULL, set_accessibility_handler },
+
+    .jump_mapping[K_STATIC_TOKEN] = { &get_class_found_keyword, NULL, set_static_handler },
+    .jump_mapping[K_CLASS_TOKEN] = { &get_class_found_keyword, NULL, set_type_class_handler },
+    .jump_mapping[IDENTIFIER_TOKEN] = { &get_class_found_keyword, NULL, set_name_handler },
+
     .jump_mapping[CLOSE_BLOCK_TOKEN] = { NULL, NULL, exit_substate }
 };
 
@@ -233,14 +251,14 @@ StackedData* empty_base_class_entry() {
     return entry;
 }
 
-bool scan_file_internal(StringDict* class_content, TokenList tokens,
+bool scan_file_internal(StringDict** context, TokenList tokens,
     parse_tree_t* current_node, unsigned int* index) {
     StackedData* stacked_data = empty_base_class_entry();
     while (*index < tokens.cursor) {
         struct jump_map* jump_to = &current_node->jump_mapping[tokens.tokens[*index].type];
         if (jump_to->on_found == exit_substate) {
             if (stacked_data->name) {
-                string_dict_put(class_content, stacked_data->name, stacked_data);
+                string_dict_put(context, stacked_data->name, stacked_data);
             }
             return true;
         }
@@ -249,7 +267,7 @@ bool scan_file_internal(StringDict* class_content, TokenList tokens,
         }
         StackedData* o_stacked_data = stacked_data;
         if (jump_to->on_found) {
-            if (!jump_to->on_found(class_content, &stacked_data, tokens, index)) {
+            if (!jump_to->on_found(context, &stacked_data, tokens, index)) {
                 free(stacked_data);
                 return false;
             }
@@ -268,7 +286,7 @@ StringDict* scan_file(TokenList tokens) {
     unsigned int index = 0;
     string_dict_init(out);
     while (index + 1 < tokens.cursor) {
-        if (!scan_file_internal(out, tokens, current_node, &index)) {
+        if (!scan_file_internal(&out, tokens, current_node, &index)) {
             string_dict_destroy(out);
             free(out);
             return NULL;
