@@ -7,6 +7,7 @@
 #include<fcntl.h>
 #include<unistd.h>
 #include<string.h>
+#include<ctype.h>
 
 static char enviroment[256] = "unspecified enviroment";
 
@@ -23,30 +24,56 @@ void set_enviroment(const char* new_enviroment) {
 void make_error(const char* line, unsigned int line_no, unsigned int char_no, 
         unsigned int len, const char * error_message, ...) {
     printf("%s %u:%u ", enviroment, line_no, char_no);
+    char_no--;
     va_list l;
     va_start(l, error_message);
     vprintf(error_message, l);
     va_end(l);
     putchar('\n');
-    for (unsigned int i = 0; i < char_no; i++) {
-        putchar(line[i]);
+    unsigned int print_len = 0;
+    printf("%4d | ", line_no);
+    unsigned int i = 0;
+    for (; line[i] && line[i] != '\n' && i < char_no; i++) {
+        if (!iscntrl(line[i])) {
+            putchar(line[i]);
+            print_len += isprint(line[i]) ? 1 : 0;
+        }
     }
     printf("\e[91m");
-    for (unsigned int i = char_no; i < char_no + len; i++) {
-        putchar(line[i]);
+    for (; line[i] && line[i] != '\n' && i < char_no + len; i++) {
+        if (!iscntrl(line[i])) {
+            putchar(line[i]);
+            print_len += isprint(line[i]) ? 1 : 0;
+        }
     }
     printf("\e[0m");
-    for (unsigned int i = char_no + len; line[i] && line[i] != '\n'; i++) {
-        putchar(line[i]);
+    for (; line[i] && line[i] != '\n'; i++) {
+        if (!iscntrl(line[i])) {
+            putchar(line[i]);
+        }
+    }
+    if (print_len == char_no) {
+        print_len++;
     }
     putchar('\n');
+    if (char_no < print_len) {
+        printf("     | ");
+        for (unsigned int i = 0; i < char_no; i++) {
+            putchar(' ');
+        }
+        printf("\e[91m");
+        for (unsigned int i = char_no; i < print_len; i++) {
+            putchar('^');
+        }
+        printf("\e[0m\n");
+    }
 }
 
 void print_tokens(TokenList l) {
     for (unsigned long i = 0; i < l.cursor; i++) {
         switch (l.tokens[i].type) {
-        case OPTIONAL_END_TOKEN:
-            printf("\n");
+        case END_TOKEN:
+            printf(";\n");
             break; 
         case K_CLASS_TOKEN:
             printf("\e[94m%s\e[0m ", "class");
@@ -117,10 +144,10 @@ void print_tokens(TokenList l) {
             printf(")");
             break;
         case OPEN_BLOCK_TOKEN:
-            printf("{");
+            printf("{\n");
             break;
         case CLOSE_BLOCK_TOKEN:
-            printf("}");
+            printf("}\n");
             break;
         case OPEN_INDEX_TOKEN:
             printf("[");
@@ -226,7 +253,7 @@ void free_single_scan_result(const char* key, void* val) {
     case ENTRY_VARIABLE:
         break;
     case ERROR_TYPE:
-        printf("detected fatal internal error");
+        printf("detected fatal internal error - error type detected - %d\n", __LINE__);
         exit(1);
         break;
     }

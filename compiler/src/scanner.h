@@ -18,25 +18,23 @@ typedef struct StackedData {
     Accessability accessability;
     char* var_type;
     bool is_static;
-    union {
-        struct {
-            StringDict* class_content;
-            char* derives_from;
-            char** implements;
-            unsigned int implements_len;
-        } class;
-        struct {
-            char* return_type;
-            char** args;
-        } method;
-        struct {
-            char* return_type;
-            unsigned int len;
-            struct StackedData** methods;
-        } method_table;
-    };
+    struct {
+        StringDict* class_content;
+        char* derives_from;
+        char** implements;
+        unsigned int implements_len;
+    } class;
+    struct {
+        char* return_type;
+        char** args;
+    } method;
+    struct {
+        char* return_type;
+        unsigned int len;
+        struct StackedData** methods;
+    } method_table;
 } StackedData;
 
-StringDict * scan_file(TokenList tokens);
+StringDict* scan_file(TokenList tokens);
 
 #endif

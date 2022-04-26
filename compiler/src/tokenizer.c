@@ -36,17 +36,15 @@ typedef struct current_read_data {
     unsigned int current_line;
 } current_read_data;
 
-int try_extract_optional_end(current_read_data * cr, const char ** src, TokenList * list) {
-    if (**src == '\n') {
-        cr->current_line++;
-        cr->current_char = 1;
+int try_extract_end(current_read_data * cr, const char ** src, TokenList * list) {
+    if (**src == ';') {
         ++*src;
-        cr->line_begin = *src;
+        cr->current_char++;
         list->tokens[list->cursor].char_in_line = cr->current_char;
         list->tokens[list->cursor].line_in_file = cr->current_line;
         list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = 1;
-        list->tokens[list->cursor].type = OPTIONAL_END_TOKEN;
+        list->tokens[list->cursor].type = END_TOKEN;
         return 1;
     }
     return 0;
@@ -303,11 +301,19 @@ unsigned int t_err(current_read_data * cr, const char ** src) {
 }
 
 int extract_next(current_read_data* cr, StringDict* dict, const char** src, TokenList* list) {
-    while (isspace(**src) && **src != '\n') {
-        cr->current_char++;
-        ++*src;
+    while (isspace(**src) || **src == '\n') {
+        if (**src == '\n') {
+            cr->current_line++;
+            cr->current_char = 1;
+            ++*src;
+            cr->line_begin = *src;
+        }
+        else {
+            cr->current_char++;
+            ++*src;
+        }
     }
-    if (try_extract_optional_end(cr, src, list)) return 1;
+    if (try_extract_end(cr, src, list)) return 1;
     if (try_extract_identifier_or_keyword(cr, dict, src, list)) return 1;
     if (try_extract_fixed_value(cr, src, list)) return 1;
     if (try_extract_any_paranthesis(cr, src, list)) return 1;

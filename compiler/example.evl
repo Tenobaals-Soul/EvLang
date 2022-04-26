@@ -1,2 +1,3 @@
 class ExampleClass {
+    int val = 5;
 }

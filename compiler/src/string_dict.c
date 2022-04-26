@@ -8,7 +8,7 @@ struct string_dict_item {
     struct string_dict_item* next;
 };
 
-void string_dict_init(StringDict * dict) {
+void string_dict_init(StringDict* dict) {
     unsigned int i = STRING_DICT_TABLE_SIZE;
     do {
         dict->items[--i] = NULL;
@@ -24,7 +24,7 @@ static int hash_string(const char* string) {
     return hash;
 }
 
-static void append_to_string_dict_items(struct string_dict_item ** list_pos, const char * key, void * val) {
+static void append_to_string_dict_items(struct string_dict_item ** list_pos, const char* key, void* val) {
     while (*list_pos) {
         struct string_dict_item * current = *list_pos;
         if (strcmp(current->key, key) == 0) {
@@ -41,7 +41,7 @@ static void append_to_string_dict_items(struct string_dict_item ** list_pos, con
     item->val = val;
 }
 
-static void remove_from_string_dict_items(struct string_dict_item ** list_pos, const char * key) {
+static void remove_from_string_dict_items(struct string_dict_item ** list_pos, const char* key) {
     while (*list_pos) {
         struct string_dict_item * current = *list_pos;
         if (strcmp(current->key, key) == 0) {
@@ -54,7 +54,7 @@ static void remove_from_string_dict_items(struct string_dict_item ** list_pos, c
     }
 }
 
-void string_dict_put(StringDict * dict, const char * key, void * val) {
+void string_dict_put(StringDict* dict, const char* key, void* val) {
     int index_pos = ((unsigned) hash_string(key)) % STRING_DICT_TABLE_SIZE;
     if (val == NULL) {
         remove_from_string_dict_items(&dict->items[index_pos], key);
@@ -66,7 +66,7 @@ void string_dict_put(StringDict * dict, const char * key, void * val) {
     }
 }
 
-void * string_dict_get(StringDict* dict, const char* key) {
+void* string_dict_get(StringDict* dict, const char* key) {
     int index_pos = ((unsigned) hash_string(key)) % STRING_DICT_TABLE_SIZE;
     struct string_dict_item * current = dict->items[index_pos];
     while (current) {
@@ -82,7 +82,7 @@ unsigned int string_dict_get_size(StringDict* dict) {
     return dict->count;
 }
 
-void string_dict_destroy(StringDict * dict) {
+void string_dict_destroy(StringDict* dict) {
     unsigned int i = STRING_DICT_TABLE_SIZE;
     do {
         i--;
