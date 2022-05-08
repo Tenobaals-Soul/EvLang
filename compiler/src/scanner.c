@@ -1,4 +1,5 @@
 #include"scanner.h"
+#include"string_dict.h"
 #include<stdlib.h>
 #include<string.h>
 #include<stdlib.h>
@@ -6,37 +7,21 @@
 #include<stdio.h>
 #include<memory.h>
 
-struct jumpmap_handler_args {
-    StringDict* class_content;
-    StackedData* stacked_data;
-    TokenList tokens;
+typedef struct state_data {
+    StringDict* dest;
+    StackedData* st_data;
+    TokenList token_list;
     unsigned int index;
-};
+    unsigned int flags;
+    unsigned int depth;
+} state_data;
 
-struct jump_map {
-    struct parser_node_s* next;
-    struct parser_node_s* call_substate;
-    bool (*on_found)(struct jumpmap_handler_args* args);
-};
+typedef struct state {
+    struct state (*func)(state_data*);
+} state;
 
-typedef struct parser_node_s {
-    struct jump_map default_jump;
-    struct jump_map jump_mapping[64];
-    bool (*on_end)(struct jumpmap_handler_args* args, bool is_root);
-} parser_node_t;
-
-#define is_null(item) (memcmp(&item, (char[sizeof(item)]) {0}, sizeof(item)) == 0)
-
-int exit_substate_flag = 0;
-int valid_flag = 0;
-bool pexit_substate(struct jumpmap_handler_args* args) {
-    (void) args;
-    exit_substate_flag = 1;
-    return true;
-}
-
-void cexit_substate() {
-    exit_substate_flag = 1;
+Token* get_token(state_data* state) {
+    return &state->token_list.tokens[state->index];
 }
 
 Accessability get_accessability(TokenList tokens, unsigned int i) {
@@ -60,18 +45,10 @@ StackedData* empty_base_entry() {
     entry->type = ENTRY_VARIABLE;
     entry->accessability = PROTECTED;
     entry->class.derives_from = "Object";
-    entry->class.implements = NULL;
-    entry->class.implements = 0;
-    entry->is_static = false;
+    // entry->class.implements = NULL;
+    // entry->class.implements = 0;
+    // entry->is_static = false;
     return entry;
-}
-
-bool flush_stacked_data(struct jumpmap_handler_args* args) {
-    if (args->stacked_data != NULL) {
-        string_dict_put(args->class_content, (args->stacked_data)->name, args->stacked_data);
-    }
-    args->stacked_data = NULL;
-    return true;
 }
 
 bool append_method(StringDict* class_content, Token* pos, StackedData* entry_found, char* name) {
@@ -98,57 +75,70 @@ bool append_method(StringDict* class_content, Token* pos, StackedData* entry_fou
     return true;
 }
 
-bool throw_expected_def(struct jumpmap_handler_args* args) {
-    Token* token_with_error = args->tokens.tokens + args->index;
+bool throw_expected_def(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
-        "expected a definiton of a class or function");
+        "expected a definiton of a class, function or variable");
     return false;
 }
 
-bool throw_expected_name(struct jumpmap_handler_args* args) {
-    Token* token_with_error = args->tokens.tokens + args->index;
+bool throw_expected_name(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a name here");
     return false;
 }
 
-bool throw_unexpected_token(struct jumpmap_handler_args* args) {
-    Token* token_with_error = args->tokens.tokens + args->index;
+bool throw_unexpected_token(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "unexpected token");
     return false;
 }
 
-bool throw_expected_class(struct jumpmap_handler_args* args) {
-    Token* token_with_error = args->tokens.tokens + args->index;
+bool throw_expected_class(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a class here");
     return false;
 }
 
-bool throw_expected_class_or_method(struct jumpmap_handler_args* args) {
-    Token* token_with_error = args->tokens.tokens + args->index;
+bool throw_expected_class_or_method(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a \"class\" keyword or a type for a method or a variale");
     return false;
 }
 
-bool throw_perhaps_missing_assign(struct jumpmap_handler_args* args) {
-    Token* token_with_error = args->tokens.tokens + args->index;
+bool throw_perhaps_missing_assign(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a \"=\", \"(\" or a \";\", you are propably missing a \"=\" between your variable and your value");
-    valid_flag = 0;
     return false;
 }
 
-bool assert_assign_operator_throw_expected_end_open(struct jumpmap_handler_args* args) {
-    Token* assert_over = args->tokens.tokens + args->index;
+bool throw_no_semicolon(Token* token_with_error) {
+    make_error(token_with_error->line_content, token_with_error->line_in_file,
+        token_with_error->char_in_line, token_with_error->text_len,
+        "missing \";\"");
+    return false;
+}
+
+bool throw_unexpected_end(Token* token_with_error) {
+    make_error(token_with_error->line_content, token_with_error->line_in_file,
+        token_with_error->char_in_line + 1, 1,
+        "unexpected EOF");
+    return false;
+}
+
+bool throw_raw_expected(Token* token_with_error, const char* expected) {
+    make_error(token_with_error->line_content, token_with_error->line_in_file,
+        token_with_error->char_in_line, token_with_error->text_len,
+        "expected %s", expected);
+    return false;
+}
+
+bool assert_assign_operator_throw_expected_end_open(Token* assert_over) {
     if (assert_over->operator_type == ASSIGN_OPERATOR) {
         return true;
     }
@@ -158,275 +148,332 @@ bool assert_assign_operator_throw_expected_end_open(struct jumpmap_handler_args*
     return false;
 }
 
+#define END_FINE (1 << 2)
+#define NO_ADVANCE (1 << 2)
+#define END_ERROR (1 << 3)
 
-bool forgot_semicolon_err(struct jumpmap_handler_args* args) {
-    Token* token_with_error = args->tokens.tokens + args->index;
-    make_error(token_with_error->line_content, token_with_error->line_in_file,
-        token_with_error->char_in_line, token_with_error->text_len,
-        "missing \";\"");
-    --args->index;
-    return false;
-}
+#define transition(new_state_f, status) { data->flags = status; return (state) { new_state_f }; }
 
-bool forgot_semicolon_err_and_exit_substate(struct jumpmap_handler_args* args) {
-    Token* token_with_error = args->tokens.tokens + args->index;
-    make_error(token_with_error->line_content, token_with_error->line_in_file,
-        token_with_error->char_in_line, token_with_error->text_len,
-        "missing \";\"");
-    --args->index;
-    cexit_substate();
-    return false;
-}
+state scan_class(state_data* data);
+state scan_class_found_accessability(state_data* data);
+state scan_class_found_static(state_data* data);
+state scan_class_found_class_keyword(state_data* data);
+state scan_class_found_class_name(state_data* data);
+state scan_class_found_derive(state_data* data);
+state scan_class_found_derive_name(state_data* data);
+state scan_class_found_implement(state_data* data);
+state scan_class_found_implement_name(state_data* data);
+state scan_class_found_implement_seperator(state_data* data);
+state scan_class_found_type(state_data* data);
+state scan_class_found_name(state_data* data);
+state scan_method_expect_arg_type(state_data* data);
+state scan_method_expect_arg_name(state_data* data);
+state scan_method_found_arg(state_data* data);
+state scan_method_args_ended(state_data* data);
+state scan_method_body(state_data* data);
 
-bool set_accessibility_handler(struct jumpmap_handler_args* args) {
-    StackedData* temp = args->stacked_data ? args->stacked_data : (args->stacked_data = empty_base_entry());
-    temp->accessability = get_accessability(args->tokens, args->index);
-    return true;
-}
-
-bool set_type_class_handler(struct jumpmap_handler_args* args) {
-    if (args->stacked_data == NULL) args->stacked_data = empty_base_entry();
-    args->stacked_data->class.class_content = malloc(sizeof(StringDict));
-    string_dict_init(args->stacked_data->class.class_content);
-    args->stacked_data->type = ENTRY_CLASS;
-    return true;
-}
-
-bool set_name_handler(struct jumpmap_handler_args* args) {
-    if (args->stacked_data == NULL) args->stacked_data = empty_base_entry();
-    args->stacked_data->name = args->tokens.tokens[args->index].identifier;
-    return true;
-}
-
-bool set_derive_from(struct jumpmap_handler_args* args) {
-    if (args->stacked_data == NULL) args->stacked_data = empty_base_entry();
-    args->stacked_data->class.derives_from = args->tokens.tokens[args->index].identifier;
-    return true;
-}
-
-bool set_static_handler(struct jumpmap_handler_args* args) {
-    if (args->stacked_data == NULL) args->stacked_data = empty_base_entry();
-    (args->stacked_data)->is_static = true;
-    return true;
-}
-
-bool set_type_handler(struct jumpmap_handler_args* args) {
-    if (args->stacked_data == NULL) args->stacked_data = empty_base_entry();
-    args->stacked_data->var_type = args->tokens.tokens[args->index].identifier;
-    args->stacked_data->method.return_type = args->tokens.tokens[args->index].identifier;
-    return true;
-}
-
-bool init_class_content_substate(struct jumpmap_handler_args* args) {
-    StringDict* new_class_content = args->stacked_data->class.class_content;
-    flush_stacked_data(args);
-    args->class_content = new_class_content;
-    return true;
-}
-
-bool append_implement_from(struct jumpmap_handler_args* args) {
-    StackedData* temp = args->stacked_data ? args->stacked_data : (args->stacked_data = empty_base_entry());
-    temp->class.implements_len++;
-    temp->class.implements = realloc(temp->class.implements, sizeof(char*) * temp->class.implements_len);
-    temp->class.implements[temp->class.implements_len] = args->tokens.tokens[args->index].identifier;
-    return true;
-}
-
-bool accept_and_return_true(struct jumpmap_handler_args* args, bool is_root) {
-    (void) args;
-    return is_root;
-}
-
-// general stuff
-parser_node_t method_block;
-
-// parse class
-parser_node_t
-    found_class_keyword, get_class_found_name, get_class_found_derive,
-    get_class_after_derive, get_class_found_implements,
-    get_class_after_implement, get_class_found_seperator, get_class_content;
-
-parser_node_t found_accessibility, found_static, found_type, found_name, found_function_args_start,
-    found_function_arg_type, found_function_arg_name, found_function_arg_seperator,
-    found_function_arg_def_end, found_text_start, found_var_operator, skip_to_end_of_statement;
-
-parser_node_t found_accessibility = {
-    .default_jump = { NULL, NULL, throw_unexpected_token },
-    .jump_mapping[K_CLASS_TOKEN] = { &found_class_keyword, NULL, set_type_class_handler },
-    .jump_mapping[K_STATIC_TOKEN] = { &found_static, NULL, set_static_handler },
-    .jump_mapping[IDENTIFIER_TOKEN] = { &found_type, NULL, set_name_handler },
-    .on_end = NULL
-};
-
-parser_node_t found_class_keyword = {
-    .default_jump = { NULL, NULL, throw_expected_name },
-    .jump_mapping[IDENTIFIER_TOKEN] = {&get_class_found_name, NULL, set_name_handler },
-    .on_end = NULL
-};
-
-parser_node_t get_class_found_name = {
-    .default_jump = { NULL, NULL, throw_unexpected_token },
-    .jump_mapping[K_DERIVES_TOKEN] = { &get_class_found_derive, NULL, NULL },
-    .jump_mapping[K_IMPLEMENTS_TOKEN] = { &get_class_found_implements, NULL, NULL },
-    .jump_mapping[OPEN_BLOCK_TOKEN] = { &get_class_content, &get_class_content, init_class_content_substate },
-    .on_end = NULL
-};
-
-parser_node_t get_class_found_derive = {
-    .default_jump = { NULL, NULL, throw_expected_class },
-    .jump_mapping[IDENTIFIER_TOKEN] = { &get_class_after_derive, NULL, set_derive_from },
-    .on_end = NULL
-};
-
-parser_node_t get_class_after_derive = {
-    .default_jump = { NULL, NULL, throw_unexpected_token },
-    .jump_mapping[K_IMPLEMENTS_TOKEN] = { &get_class_found_implements, NULL, NULL },
-    .jump_mapping[OPEN_BLOCK_TOKEN] = { NULL, &get_class_content, init_class_content_substate },
-    .on_end = NULL
-};
-
-parser_node_t get_class_found_implements = {
-    .default_jump = { NULL, NULL, throw_expected_class },
-    .jump_mapping[IDENTIFIER_TOKEN] = {&get_class_after_implement, NULL, append_implement_from },
-    .on_end = NULL
-};
-
-parser_node_t get_class_after_implement = {
-    .default_jump = { NULL, NULL, throw_unexpected_token },
-    .jump_mapping[SEPERATOR_TOKEN] = { &get_class_found_implements, NULL, NULL },
-    .jump_mapping[OPEN_BLOCK_TOKEN] = { NULL, &get_class_content, init_class_content_substate },
-    .on_end = NULL
-};
-
-parser_node_t get_file_content = {
-    .default_jump = { NULL, NULL, throw_expected_def },
-    .jump_mapping[K_PUBLIC_TOKEN] = { &found_accessibility, NULL, set_accessibility_handler },
-    .jump_mapping[K_PROTECTED_TOKEN] = { &found_accessibility, NULL, set_accessibility_handler },
-    .jump_mapping[K_PRIVATE_TOKEN] = { &found_accessibility, NULL, set_accessibility_handler },
-
-    .jump_mapping[K_STATIC_TOKEN] = { &found_static, NULL, set_static_handler },
-    .jump_mapping[K_CLASS_TOKEN] = { &found_class_keyword, NULL, set_type_class_handler },
-    .jump_mapping[IDENTIFIER_TOKEN] = { &found_type, NULL, set_type_handler },
-    .on_end = NULL
-};
-
-parser_node_t get_class_content = {
-    .default_jump = { NULL, NULL, throw_expected_def },
-    .jump_mapping[K_PUBLIC_TOKEN] = { &found_accessibility, NULL, set_accessibility_handler },
-    .jump_mapping[K_PROTECTED_TOKEN] = { &found_accessibility, NULL, set_accessibility_handler },
-    .jump_mapping[K_PRIVATE_TOKEN] = { &found_accessibility, NULL, set_accessibility_handler },
-
-    .jump_mapping[K_STATIC_TOKEN] = { &found_static, NULL, set_static_handler },
-    .jump_mapping[K_CLASS_TOKEN] = { &found_class_keyword, NULL, set_type_class_handler },
-    .jump_mapping[IDENTIFIER_TOKEN] = { &found_type, NULL, set_type_handler },
-
-    .jump_mapping[CLOSE_BLOCK_TOKEN] = { NULL, NULL, pexit_substate },
-    .on_end = accept_and_return_true
-};
-
-parser_node_t found_static = {
-    .default_jump = { NULL, NULL, throw_expected_class_or_method },
-    .jump_mapping[K_CLASS_TOKEN] = { &found_class_keyword, NULL, set_type_class_handler },
-    .jump_mapping[IDENTIFIER_TOKEN] = { &found_type, NULL, set_type_handler },
-    .on_end = NULL
-};
-
-parser_node_t found_type = {
-    .default_jump = { NULL, NULL, throw_expected_name },
-    .jump_mapping[IDENTIFIER_TOKEN] = { &found_name, NULL, set_name_handler },
-    .on_end = NULL
-};
-
-parser_node_t found_name = {
-    .default_jump = { NULL, NULL, throw_unexpected_token },
-    .jump_mapping[END_TOKEN] = { &get_class_content, NULL, flush_stacked_data },
-    .jump_mapping[OPEN_PARANTHESIS_TOKEN] = { &found_function_args_start, NULL, NULL },
-    .jump_mapping[OPERATOR_TOKEN] = { &skip_to_end_of_statement, NULL, assert_assign_operator_throw_expected_end_open },
-    .jump_mapping[FIXED_VALUE_TOKEN] = { &skip_to_end_of_statement, NULL, throw_perhaps_missing_assign },
-    .on_end = NULL
-};
-
-parser_node_t skip_to_end_of_statement = {
-    .default_jump = { &skip_to_end_of_statement, NULL, NULL },
-    .jump_mapping[END_TOKEN] = { &get_class_content, NULL, flush_stacked_data },
-
-    .jump_mapping[K_PUBLIC_TOKEN] = { NULL, NULL, forgot_semicolon_err },
-    .jump_mapping[K_PROTECTED_TOKEN] = { NULL, NULL, forgot_semicolon_err },
-    .jump_mapping[K_PRIVATE_TOKEN] = { NULL, NULL, forgot_semicolon_err },
-
-    .jump_mapping[K_STATIC_TOKEN] = { NULL, NULL, forgot_semicolon_err },
-    .jump_mapping[K_CLASS_TOKEN] = { NULL, NULL, forgot_semicolon_err },
-
-    .jump_mapping[CLOSE_BLOCK_TOKEN] = { NULL, NULL,  forgot_semicolon_err_and_exit_substate },
-    .on_end = NULL
-};
-
-parser_node_t method_block = {
-    .default_jump = { &method_block, NULL, NULL },
-    .jump_mapping[OPEN_BLOCK_TOKEN] = { &method_block, &method_block, NULL },
-    .jump_mapping[CLOSE_BLOCK_TOKEN] = { NULL, NULL, pexit_substate },
-    .on_end = NULL
-};
-
-parser_node_t* scan_class(Token* token) {
-
-}
-
-bool scan_file_internal(parser_node_t* current_node, struct jumpmap_handler_args* args, bool is_root) {
-    int substate_flag = 0;
-    while (args->index < args->tokens.cursor) {
-        struct jump_map* jump_to = &current_node->jump_mapping[args->tokens.tokens[args->index].type];
-        if (is_null(*jump_to)) {
-            jump_to = &current_node->default_jump;
-        }
-        StringDict* out = args->class_content;
-        if (jump_to->on_found) {
-            if (!jump_to->on_found(args)) {
-                if (args->stacked_data) free(args->stacked_data);
-                return false;
-            }
-            substate_flag = exit_substate_flag;
-            exit_substate_flag = 0;
-        }
-        ++args->index;
-        if (jump_to->call_substate) {
-            struct jumpmap_handler_args n_args = *args;
-            if (!scan_file_internal(jump_to->call_substate, &n_args, false)) {
-                return false;
-            }
-            args->class_content = out;
-            args->index = n_args.index;
-        }
-        if (substate_flag) {
-            return true;
-        }
-        current_node = jump_to->next ? jump_to->next : current_node;
+state scan_class(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case K_PRIVATE_TOKEN:
+        data->st_data->accessability = PRIVATE;
+        transition(scan_class_found_accessability, 0);
+    case K_PROTECTED_TOKEN:
+        data->st_data->accessability = PROTECTED;
+        transition(scan_class_found_accessability, 0);
+    case K_PUBLIC_TOKEN:
+        data->st_data->accessability = PUBLIC;
+        transition(scan_class_found_accessability, 0);
+    case K_STATIC_TOKEN:
+        data->st_data->accessability = PROTECTED;
+        data->st_data->is_static = true;
+        transition(scan_class_found_static, 0);
+    case K_CLASS_TOKEN:
+        data->st_data->accessability = PROTECTED;
+        data->st_data->is_static = false;
+        data->st_data->type = ENTRY_CLASS;
+        transition(scan_class_found_class_keyword, 0);
+    case IDENTIFIER_TOKEN:
+        data->st_data->accessability = PROTECTED;
+        data->st_data->is_static = false;
+        data->st_data->var_type = token->identifier;
+        data->st_data->method.return_type = token->identifier;
+        transition(scan_class_found_type, 0);
+    case CLOSE_BLOCK_TOKEN:
+        transition(NULL, END_FINE);
+    default:
+        throw_expected_def(token);
+        transition(NULL, END_ERROR);
     }
-    if (current_node->on_end) {
-        return current_node->on_end(args, is_root);
-    }
-    Token e_t = args->tokens.tokens[args->index - 1];
-    make_error(e_t.line_content, e_t.line_in_file, e_t.char_in_line + e_t.text_len, 1, 
-        "unexpected EOF");
-    return false;
 }
 
-StringDict* scan_file(TokenList tokens) {
-    valid_flag = 1;
-    parser_node_t* current_node = &get_file_content;
-    StringDict* out = malloc(sizeof(StringDict));
-    string_dict_init(out);
-    struct jumpmap_handler_args args;
-    args.index = 0;
-    args.tokens = tokens;
-    while (args.index + 1 < tokens.cursor) {
-        args.class_content = out;
-        args.stacked_data = NULL;
-        if (!scan_file_internal(current_node, &args, true)) {
-            string_dict_destroy(out);
-            free(out);
+state scan_class_found_accessability(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case K_STATIC_TOKEN:
+        data->st_data->is_static = true;
+        transition(scan_class_found_static, 0);
+    case K_CLASS_TOKEN:
+        data->st_data->is_static = false;
+        data->st_data->type = ENTRY_CLASS;
+        transition(scan_class_found_class_keyword, 0);
+    case IDENTIFIER_TOKEN:
+        data->st_data->is_static = false;
+        data->st_data->var_type = token->identifier;
+        data->st_data->method.return_type = token->identifier;
+        transition(scan_class_found_type, 0);
+    default:
+        throw_unexpected_token(token);
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_class_found_static(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case K_CLASS_TOKEN:
+        data->st_data->type = ENTRY_CLASS;
+        transition(scan_class_found_class_keyword, 0);
+    case IDENTIFIER_TOKEN:
+        data->st_data->var_type = token->identifier;
+        data->st_data->method.return_type = token->identifier;
+        transition(scan_class_found_type, 0);
+    default:
+        throw_unexpected_token(token);
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_class_found_class_keyword(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case IDENTIFIER_TOKEN:
+        data->st_data->is_static = true;
+        data->st_data->name = token->identifier;
+        transition(scan_class_found_class_name, 0);
+    default:
+        throw_expected_name(token);
+        data->flags = END_ERROR;
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_inner_class(state_data* data) {
+    data->index++;
+    StringDict* content = scan_content(data->token_list, &data->index);
+    if (!content) transition(NULL, END_ERROR);
+    data->st_data->class.class_content = content;
+    string_dict_put(data->dest, data->st_data->name, data->st_data);
+    data->st_data = empty_base_entry();
+    transition(scan_class, END_FINE);
+}
+
+state scan_class_found_class_name(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case K_DERIVES_TOKEN:
+        transition(scan_class_found_derive, 0);
+    case K_IMPLEMENTS_TOKEN:
+        data->st_data->class.derives_from = NULL;
+        transition(scan_class_found_implement, 0);
+    case OPEN_BLOCK_TOKEN:;
+        return scan_inner_class(data);
+    default:
+        throw_unexpected_token(token);
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_class_found_derive(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case IDENTIFIER_TOKEN:
+        data->st_data->class.derives_from = token->identifier;
+        transition(scan_class_found_derive_name, 0);
+    default:
+        throw_expected_name(token);
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_class_found_derive_name(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case K_IMPLEMENTS_TOKEN:
+        data->st_data->class.derives_from = NULL;
+        transition(scan_class_found_implement, 0);
+    case OPEN_BLOCK_TOKEN:
+        return scan_inner_class(data);
+    default:
+        throw_unexpected_token(token);
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_class_found_implement(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case IDENTIFIER_TOKEN:
+        data->st_data->class.derives_from = token->identifier;
+        transition(scan_class_found_implement_name, 0);
+    default:
+        throw_expected_name(token);
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_class_found_implement_name(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case SEPERATOR_TOKEN:
+        data->st_data->class.derives_from = NULL;
+        transition(scan_class_found_implement, 0);
+    case OPEN_BLOCK_TOKEN:
+        return scan_inner_class(data);
+    default:
+        throw_unexpected_token(token);
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_class_found_type(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case IDENTIFIER_TOKEN:
+        data->st_data->name = token->identifier;
+        transition(scan_class_found_name, 0);
+    default:
+        throw_raw_expected(token, "an identifier");
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_class_found_name(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case END_TOKEN:
+        data->st_data->type = ENTRY_VARIABLE;
+        string_dict_put(data->dest, data->st_data->name, data->st_data);
+        transition(scan_class, 0);
+    case OPERATOR_TOKEN:
+        if (token->operator_type != ASSIGN_OPERATOR) {
+            throw_perhaps_missing_assign(token);
+            transition(NULL, END_ERROR);
+        }
+        data->st_data->type = ENTRY_VARIABLE;
+        transition(scan_class_found_name, 0);
+    case OPEN_PARANTHESIS_TOKEN:
+        data->st_data->type = ENTRY_METHOD;
+        transition(scan_method_expect_arg_type, 0);
+    default:
+        throw_perhaps_missing_assign(token);
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_method_expect_arg_type(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case CLOSE_PARANTHESIS_TOKEN:
+        transition(scan_class, 0);
+    case IDENTIFIER_TOKEN:
+        data->st_data->method.args = realloc(data->st_data->method.args, sizeof(struct argument_s) * (data->st_data->method.arg_count + 1));
+        data->st_data->method.args[data->st_data->method.arg_count].name = NULL;
+        data->st_data->method.args[data->st_data->method.arg_count].type = token->identifier;
+        transition(scan_method_expect_arg_name, 0);
+    default:
+        throw_raw_expected(token, "a type");
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_method_expect_arg_name(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case IDENTIFIER_TOKEN:
+        data->st_data->method.args[data->st_data->method.arg_count++].name = token->identifier;
+        transition(scan_method_found_arg, 0);
+    default:
+        throw_raw_expected(token, "an identifier");
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_method_found_arg(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case SEPERATOR_TOKEN:
+        transition(scan_method_expect_arg_type, 0);
+    case CLOSE_PARANTHESIS_TOKEN:
+        transition(scan_method_args_ended, 0);
+    default:
+        throw_raw_expected(token, "\"{\"");
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_method_args_ended(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case OPEN_BLOCK_TOKEN:
+        transition(scan_method_body, 0);
+    default:
+        throw_raw_expected(token, "\"{\"");
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_method_body(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case OPEN_BLOCK_TOKEN:
+        data->depth++;
+        transition(scan_method_body, 0);
+    case CLOSE_BLOCK_TOKEN:
+        if (data->depth > 0) {
+            data->depth--;
+            transition(scan_method_body, 0);
+        }
+        else {
+            data->depth = 0;
+            append_method(data->dest, token, data->st_data, data->st_data->name);
+            transition(scan_class, 0);
+        }
+    default:
+        transition(scan_method_body, 0);
+    }
+}
+
+StringDict* scan_content(TokenList tokens, unsigned int* index) {
+    state next_state = { scan_class };
+    StringDict* dict = malloc(sizeof(StringDict));
+    string_dict_init(dict);
+    state_data data = {
+        .dest = dict,
+        .st_data = empty_base_entry(),
+        .token_list = tokens,
+        .index = *index,
+        .flags = 0
+    };
+    while (next_state.func) {
+        next_state = next_state.func(&data);
+        if (data.flags & END_ERROR) {
             return NULL;
         }
+        data.index++;
+        if (data.index >= data.token_list.cursor) {
+            data.index--;
+            if (data.flags & END_FINE) {
+                *index = data.index;
+                return dict;
+            }
+            else {
+                throw_unexpected_end(&tokens.tokens[data.index]);
+                return NULL;
+            }
+        }
     }
-    return valid_flag ? out : NULL;
+    data.index--;
+    *index = data.index;
+    return dict;
 }

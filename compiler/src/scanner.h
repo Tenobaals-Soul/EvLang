@@ -26,7 +26,11 @@ typedef struct StackedData {
     } class;
     struct {
         char* return_type;
-        char** args;
+        struct argument_s {
+            char* type;
+            char* name;
+        }* args;
+        unsigned int arg_count;
     } method;
     struct {
         char* return_type;
@@ -35,6 +39,6 @@ typedef struct StackedData {
     } method_table;
 } StackedData;
 
-StringDict* scan_file(TokenList tokens);
+StringDict* scan_content(TokenList tokens, unsigned int* index);
 
 #endif

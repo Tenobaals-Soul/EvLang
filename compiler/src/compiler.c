@@ -199,12 +199,12 @@ void print_single_result_internal(void* enviroment, const char* name, void* val)
         break;
     case ENTRY_METHOD:
         printf("%s%s %s(", indent, entry->method.return_type, name);
-        int i;
-        for (i = 0; entry->method.args[i] && entry->method.args[i + 1]; i++) {
-            printf("%s, ", entry->method.args[i]);
+        unsigned int i;
+        for (i = 0; i < entry->method.arg_count - 1; i++) {
+            printf("%s %s, ", entry->method.args[i].type, entry->method.args[i].name);
         }
-        if (entry->method.args[i]) {
-            printf("%s", entry->method.args[i]);
+        if (entry->method.arg_count) {
+            printf("%s %s", entry->method.args[i].type, entry->method.args[i].name);
         }
         printf(")\n");
         break;
@@ -293,7 +293,8 @@ int main(int argc, char** argv) {
         token_lists[i - 1] = lex(file_content);
         file_contents[i - 1] = file_content;
         print_tokens(token_lists[i - 1]);
-        StringDict* content = scan_file(token_lists[i - 1]);
+        unsigned int index = 0;
+        StringDict* content = scan_content(token_lists[i - 1], &index);
         if (content) {
             print_scan_result(content);
             string_dict_put(&general_identifier_dict, argv[i], content);   

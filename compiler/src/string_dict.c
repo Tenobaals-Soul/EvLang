@@ -24,7 +24,7 @@ static int hash_string(const char* string) {
     return hash;
 }
 
-static void append_to_string_dict_items(struct string_dict_item ** list_pos, const char* key, void* val) {
+static void append_to_string_dict_items(struct string_dict_item** list_pos, const char* key, void* val) {
     while (*list_pos) {
         struct string_dict_item * current = *list_pos;
         if (strcmp(current->key, key) == 0) {

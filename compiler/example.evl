@@ -1,3 +1,9 @@
 class ExampleClass {
-    int val = 5;
+    int add(int a, int b) {
+        return a + b;
+    }
+}
+
+class AnOtherExampleClass {
+    class InnerExampleClass {}
 }
