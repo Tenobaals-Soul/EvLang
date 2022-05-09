@@ -16,8 +16,12 @@ typedef struct StackedData {
     char* name;
     unsigned int line_no;
     Accessability accessability;
-    char* var_type;
     bool is_static;
+    Token* causing;
+    struct {
+        char* type;
+        unsigned int expression_start_index;
+    } var;
     struct {
         StringDict* class_content;
         char* derives_from;

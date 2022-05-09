@@ -6,6 +6,7 @@
 #include<stdbool.h>
 #include<stdio.h>
 #include<memory.h>
+#include<stdarg.h>
 
 typedef struct state_data {
     StringDict* dest;
@@ -56,7 +57,8 @@ bool append_method(StringDict* class_content, Token* pos, StackedData* entry_fou
     StackedData* method_table;
     if (found) {
         if (found->type != ENTRY_METHOD_TABLE) {
-            make_error(pos->line_content, pos->line_in_file, 0, ~0, "\"%s\" is already defined in line %u.", found->line_no);
+            make_error(pos->line_content, pos->line_in_file, 0, ~0,
+                "\"%s\" is already defined in line %u.", name, found->line_no);
             return false;
         }
         method_table = found;
@@ -75,77 +77,78 @@ bool append_method(StringDict* class_content, Token* pos, StackedData* entry_fou
     return true;
 }
 
-bool throw_expected_def(Token* token_with_error) {
+void throw_expected_def(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a definiton of a class, function or variable");
-    return false;
 }
 
-bool throw_expected_name(Token* token_with_error) {
+void throw_expected_name(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a name here");
-    return false;
 }
 
-bool throw_unexpected_token(Token* token_with_error) {
+void throw_unexpected_token(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "unexpected token");
-    return false;
 }
 
-bool throw_expected_class(Token* token_with_error) {
+void throw_expected_class(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a class here");
-    return false;
 }
 
-bool throw_expected_class_or_method(Token* token_with_error) {
+void throw_expected_class_or_method(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a \"class\" keyword or a type for a method or a variale");
-    return false;
 }
 
-bool throw_perhaps_missing_assign(Token* token_with_error) {
+void throw_perhaps_missing_assign(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a \"=\", \"(\" or a \";\", you are propably missing a \"=\" between your variable and your value");
-    return false;
 }
 
-bool throw_no_semicolon(Token* token_with_error) {
+void throw_no_semicolon(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "missing \";\"");
-    return false;
 }
 
-bool throw_unexpected_end(Token* token_with_error) {
+void throw_unexpected_end(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line + 1, 1,
         "unexpected EOF");
-    return false;
 }
 
-bool throw_raw_expected(Token* token_with_error, const char* expected) {
+void throw_raw_expected(Token* token_with_error, const char* expected, ...) {
+    va_list arglist;
+
+    va_start( arglist, expected );
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
-        "expected %s", expected);
-    return false;
+        "expected %s", expected, arglist);
+    va_end( arglist );
 }
 
-bool assert_assign_operator_throw_expected_end_open(Token* assert_over) {
-    if (assert_over->operator_type == ASSIGN_OPERATOR) {
-        return true;
+void throw_redefinition_error(Token* token_with_error, const char* name) {
+    make_error(token_with_error->line_content, token_with_error->line_in_file,
+        token_with_error->char_in_line, token_with_error->text_len,
+        "redefinition of symbol", name);
+}
+
+bool flush_stacked_data(state_data* data) {
+    if (string_dict_get(data->dest, data->st_data->name)) {
+        throw_redefinition_error(data->st_data->causing, data->st_data->name);
+        return false;
     }
-    make_error(assert_over->line_content, assert_over->line_in_file,
-        assert_over->char_in_line, assert_over->text_len,
-        "expected a \"=\", \"(\" or a \";\"");
-    return false;
+    string_dict_put(data->dest, data->st_data->name, data->st_data);
+    data->st_data = empty_base_entry();
+    return true;
 }
 
 #define END_FINE (1 << 2)
@@ -166,11 +169,14 @@ state scan_class_found_implement_name(state_data* data);
 state scan_class_found_implement_seperator(state_data* data);
 state scan_class_found_type(state_data* data);
 state scan_class_found_name(state_data* data);
+state scan_class_found_type_no_method(state_data* data);
+state scan_class_found_name_no_method(state_data* data);
 state scan_method_expect_arg_type(state_data* data);
 state scan_method_expect_arg_name(state_data* data);
 state scan_method_found_arg(state_data* data);
 state scan_method_args_ended(state_data* data);
 state scan_method_body(state_data* data);
+state var_got_assigned(state_data* data);
 
 state scan_class(state_data* data) {
     Token* token = get_token(data);
@@ -196,7 +202,7 @@ state scan_class(state_data* data) {
     case IDENTIFIER_TOKEN:
         data->st_data->accessability = PROTECTED;
         data->st_data->is_static = false;
-        data->st_data->var_type = token->identifier;
+        data->st_data->var.type = token->identifier;
         data->st_data->method.return_type = token->identifier;
         transition(scan_class_found_type, 0);
     case CLOSE_BLOCK_TOKEN:
@@ -219,7 +225,7 @@ state scan_class_found_accessability(state_data* data) {
         transition(scan_class_found_class_keyword, 0);
     case IDENTIFIER_TOKEN:
         data->st_data->is_static = false;
-        data->st_data->var_type = token->identifier;
+        data->st_data->var.type = token->identifier;
         data->st_data->method.return_type = token->identifier;
         transition(scan_class_found_type, 0);
     default:
@@ -235,7 +241,7 @@ state scan_class_found_static(state_data* data) {
         data->st_data->type = ENTRY_CLASS;
         transition(scan_class_found_class_keyword, 0);
     case IDENTIFIER_TOKEN:
-        data->st_data->var_type = token->identifier;
+        data->st_data->var.type = token->identifier;
         data->st_data->method.return_type = token->identifier;
         transition(scan_class_found_type, 0);
     default:
@@ -250,6 +256,7 @@ state scan_class_found_class_keyword(state_data* data) {
     case IDENTIFIER_TOKEN:
         data->st_data->is_static = true;
         data->st_data->name = token->identifier;
+        data->st_data->causing = token;
         transition(scan_class_found_class_name, 0);
     default:
         throw_expected_name(token);
@@ -263,8 +270,7 @@ state scan_inner_class(state_data* data) {
     StringDict* content = scan_content(data->token_list, &data->index);
     if (!content) transition(NULL, END_ERROR);
     data->st_data->class.class_content = content;
-    string_dict_put(data->dest, data->st_data->name, data->st_data);
-    data->st_data = empty_base_entry();
+    flush_stacked_data(data);
     transition(scan_class, END_FINE);
 }
 
@@ -341,9 +347,10 @@ state scan_class_found_type(state_data* data) {
     switch (token->type) {
     case IDENTIFIER_TOKEN:
         data->st_data->name = token->identifier;
+        data->st_data->causing = token;
         transition(scan_class_found_name, 0);
     default:
-        throw_raw_expected(token, "an identifier");
+        throw_raw_expected(token, "expected an identifier");
         transition(NULL, END_ERROR);
     }
 }
@@ -353,7 +360,8 @@ state scan_class_found_name(state_data* data) {
     switch (token->type) {
     case END_TOKEN:
         data->st_data->type = ENTRY_VARIABLE;
-        string_dict_put(data->dest, data->st_data->name, data->st_data);
+        flush_stacked_data(data);
+        data->st_data = empty_base_entry();
         transition(scan_class, 0);
     case OPERATOR_TOKEN:
         if (token->operator_type != ASSIGN_OPERATOR) {
@@ -371,18 +379,113 @@ state scan_class_found_name(state_data* data) {
     }
 }
 
+state scan_class_found_type_no_method(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case IDENTIFIER_TOKEN:
+        data->st_data->name = token->identifier;
+        data->st_data->causing = token;
+        transition(scan_class_found_name_no_method, 0);
+    default:
+        throw_raw_expected(token, "expected an identifier");
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_class_found_name_no_method(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case END_TOKEN:
+        data->st_data->type = ENTRY_VARIABLE;
+        flush_stacked_data(data);
+        transition(scan_class, 0);
+    case OPERATOR_TOKEN:
+        if (token->operator_type != ASSIGN_OPERATOR) {
+            throw_perhaps_missing_assign(token);
+            transition(NULL, END_ERROR);
+        }
+        data->st_data->type = ENTRY_VARIABLE;
+        transition(scan_class_found_name, 0);
+    default:
+        throw_perhaps_missing_assign(token);
+        transition(NULL, END_ERROR);
+    }
+}
+
+state skip(state_data* data) {
+    while (true) {
+        switch (data->token_list.tokens[data->index].type) {
+        case END_TOKEN:
+            data->st_data = empty_base_entry();
+            transition(scan_class, END_FINE);
+        case SEPERATOR_TOKEN:
+            transition(scan_class_found_type_no_method, 0);
+        case K_PUBLIC_TOKEN:
+        case K_PRIVATE_TOKEN:
+        case K_PROTECTED_TOKEN:
+        case K_STATIC_TOKEN:
+        case K_CLASS_TOKEN:
+            data->index--;
+            data->st_data = empty_base_entry();
+            transition(scan_class, END_ERROR);
+        default:
+            data->index++;
+            break;
+        }
+    }
+}
+
+char inverse_bracket(char bracket) {
+    return bracket == '{' ? '}' : bracket == '[' ? ']' : bracket == '(' ? ')' : 0;
+}
+
+state var_got_assigned(state_data* data) {
+    data->st_data->var.expression_start_index = data->index;
+    int layer = 0;
+    char type = 0;
+    while (true) {
+        if (data->index >= data->token_list.cursor) {
+            data->index--;
+            transition(scan_class, 0);
+        }
+        Token* token = &data->token_list.tokens[data->index];
+        switch (token->type) {
+        case END_TOKEN:
+            data->st_data = empty_base_entry();
+            if (layer == 0) transition(scan_class, 0);
+            break;
+        case OPEN_BLOCK_TOKEN:
+        case OPEN_INDEX_TOKEN:
+        case OPEN_PARANTHESIS_TOKEN:
+            if (type) {
+                throw_raw_expected(token, "%c expected", inverse_bracket(type));
+                return skip(data);
+            }
+            break;
+        case SEPERATOR_TOKEN:;
+            StackedData* new_entry = empty_base_entry();
+            *new_entry = *data->st_data;
+            data->st_data = new_entry;
+            if (layer == 0) transition(scan_class_found_type_no_method, 0);
+        default:
+            break;
+        }
+        data->index++;
+    }
+}
+
 state scan_method_expect_arg_type(state_data* data) {
     Token* token = get_token(data);
     switch (token->type) {
     case CLOSE_PARANTHESIS_TOKEN:
-        transition(scan_class, 0);
+        transition(scan_method_args_ended, 0);
     case IDENTIFIER_TOKEN:
         data->st_data->method.args = realloc(data->st_data->method.args, sizeof(struct argument_s) * (data->st_data->method.arg_count + 1));
         data->st_data->method.args[data->st_data->method.arg_count].name = NULL;
         data->st_data->method.args[data->st_data->method.arg_count].type = token->identifier;
         transition(scan_method_expect_arg_name, 0);
     default:
-        throw_raw_expected(token, "a type");
+        throw_raw_expected(token, "expected a type");
         transition(NULL, END_ERROR);
     }
 }
@@ -394,7 +497,7 @@ state scan_method_expect_arg_name(state_data* data) {
         data->st_data->method.args[data->st_data->method.arg_count++].name = token->identifier;
         transition(scan_method_found_arg, 0);
     default:
-        throw_raw_expected(token, "an identifier");
+        throw_raw_expected(token, "expected an identifier");
         transition(NULL, END_ERROR);
     }
 }
@@ -407,7 +510,7 @@ state scan_method_found_arg(state_data* data) {
     case CLOSE_PARANTHESIS_TOKEN:
         transition(scan_method_args_ended, 0);
     default:
-        throw_raw_expected(token, "\"{\"");
+        throw_raw_expected(token, "expected \"{\"");
         transition(NULL, END_ERROR);
     }
 }
@@ -418,7 +521,7 @@ state scan_method_args_ended(state_data* data) {
     case OPEN_BLOCK_TOKEN:
         transition(scan_method_body, 0);
     default:
-        throw_raw_expected(token, "\"{\"");
+        throw_raw_expected(token, "expected \"{\"");
         transition(NULL, END_ERROR);
     }
 }
@@ -437,6 +540,7 @@ state scan_method_body(state_data* data) {
         else {
             data->depth = 0;
             append_method(data->dest, token, data->st_data, data->st_data->name);
+            data->st_data = empty_base_entry();
             transition(scan_class, 0);
         }
     default:
@@ -448,6 +552,7 @@ StringDict* scan_content(TokenList tokens, unsigned int* index) {
     state next_state = { scan_class };
     StringDict* dict = malloc(sizeof(StringDict));
     string_dict_init(dict);
+    bool error = false;
     state_data data = {
         .dest = dict,
         .st_data = empty_base_entry(),
@@ -458,7 +563,7 @@ StringDict* scan_content(TokenList tokens, unsigned int* index) {
     while (next_state.func) {
         next_state = next_state.func(&data);
         if (data.flags & END_ERROR) {
-            return NULL;
+            error = true;
         }
         data.index++;
         if (data.index >= data.token_list.cursor) {
@@ -472,6 +577,11 @@ StringDict* scan_content(TokenList tokens, unsigned int* index) {
                 return NULL;
             }
         }
+    }
+    if (error) {
+        data.index--;
+        *index = data.index;
+        return NULL;
     }
     data.index--;
     *index = data.index;

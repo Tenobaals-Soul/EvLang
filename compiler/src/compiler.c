@@ -216,10 +216,11 @@ void print_single_result_internal(void* enviroment, const char* name, void* val)
         }
         break;
     case ENTRY_VARIABLE:
-        printf("%s%s %s\n", indent, entry->var_type, name);
+        printf("%s%s %s\n", indent, entry->var.type, name);
         break;
-    default:
-        printf("%s???\n", indent);
+    case ERROR_TYPE:
+        printf("detected fatal internal error - error type detected - %d\n", __LINE__);
+        exit(1);
         break;
     }
 }
@@ -235,7 +236,6 @@ void print_scan_result(StringDict* content) {
 }
 
 void free_single_scan_result(const char* key, void* val) {
-    (void) key;
     StackedData* entry = val;
     switch (entry->type) {
     case ENTRY_CLASS:
@@ -247,7 +247,7 @@ void free_single_scan_result(const char* key, void* val) {
         break;
     case ENTRY_METHOD_TABLE:
         for (unsigned int i = 0; i < entry->method_table.len; i++) {
-            free_single_scan_result(NULL, entry->method_table.methods[i]);
+            free_single_scan_result(key, entry->method_table.methods[i]);
         }
         break;
     case ENTRY_VARIABLE:
@@ -303,6 +303,6 @@ int main(int argc, char** argv) {
     for (int i = 0; i < argc - 1; i++) {
         free(file_contents[i]);
     }
-    free_tokens(token_lists, argc);
     string_dict_foreach(&general_identifier_dict, free_scan_result);
+    free_tokens(token_lists, argc);
 }
