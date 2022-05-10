@@ -14,7 +14,7 @@ unsigned long advance(TokenList * list, unsigned long capacity) {
     return capacity;
 }
 
-char * read_next_identifier(const char * src, unsigned long * len) {
+char* read_next_identifier(const char * src, unsigned long * len) {
     *len = 0;
     if (isalpha(*src) || *src == '_') {
         while (isalpha(src[*len]) || src[*len] == '_' || isdigit(src[*len])) {
@@ -76,7 +76,7 @@ int t_get_bool(char * identifier, unsigned long len, current_read_data * cr, Tok
 
 void t_get_keyword_or_identifier(char* identifier, unsigned long len, current_read_data* cr, StringDict* keyword_dict, TokenList* list) {
     void* val = string_dict_get(keyword_dict, identifier);
-    list->tokens[list->cursor].char_in_line = cr->current_char;
+    list->tokens[list->cursor].char_in_line = cr->current_char + 1;
     list->tokens[list->cursor].line_in_file = cr->current_line;
     list->tokens[list->cursor].line_content = cr->line_begin;
     list->tokens[list->cursor].text_len = len;

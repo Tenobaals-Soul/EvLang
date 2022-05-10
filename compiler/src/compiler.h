@@ -65,4 +65,9 @@ void set_enviroment(const char* enviroment);
 void make_error(const char * line, unsigned int line_no, unsigned int char_no, 
         unsigned int len, const char * error_message, ...);
 
+void make_warning(const char* line, unsigned int line_no, unsigned int char_no, 
+        unsigned int len, const char * warning_message, ...);
+
+void free_scan_result(const char* key, void* val);
+
 #endif

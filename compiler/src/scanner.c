@@ -1,5 +1,6 @@
 #include"scanner.h"
 #include"string_dict.h"
+#include"compiler.h"
 #include<stdlib.h>
 #include<string.h>
 #include<stdlib.h>
@@ -355,6 +356,29 @@ state scan_class_found_type(state_data* data) {
     }
 }
 
+state skip(state_data* data) {
+    while (true) {
+        switch (data->token_list.tokens[data->index].type) {
+        case END_TOKEN:
+            data->st_data = empty_base_entry();
+            transition(scan_class, END_FINE);
+        case SEPERATOR_TOKEN:
+            transition(scan_class_found_type_no_method, 0);
+        case K_PUBLIC_TOKEN:
+        case K_PRIVATE_TOKEN:
+        case K_PROTECTED_TOKEN:
+        case K_STATIC_TOKEN:
+        case K_CLASS_TOKEN:
+            data->index--;
+            data->st_data = empty_base_entry();
+            transition(scan_class, END_ERROR);
+        default:
+            data->index++;
+            break;
+        }
+    }
+}
+
 state scan_class_found_name(state_data* data) {
     Token* token = get_token(data);
     switch (token->type) {
@@ -373,9 +397,14 @@ state scan_class_found_name(state_data* data) {
     case OPEN_PARANTHESIS_TOKEN:
         data->st_data->type = ENTRY_METHOD;
         transition(scan_method_expect_arg_type, 0);
+    case SEPERATOR_TOKEN:;
+        StackedData* old = data->st_data;
+        flush_stacked_data(data);
+        *data->st_data = *old;
+        transition(scan_class_found_type, 0);
     default:
         throw_perhaps_missing_assign(token);
-        transition(NULL, END_ERROR);
+        return skip(data);
     }
 }
 
@@ -409,29 +438,6 @@ state scan_class_found_name_no_method(state_data* data) {
     default:
         throw_perhaps_missing_assign(token);
         transition(NULL, END_ERROR);
-    }
-}
-
-state skip(state_data* data) {
-    while (true) {
-        switch (data->token_list.tokens[data->index].type) {
-        case END_TOKEN:
-            data->st_data = empty_base_entry();
-            transition(scan_class, END_FINE);
-        case SEPERATOR_TOKEN:
-            transition(scan_class_found_type_no_method, 0);
-        case K_PUBLIC_TOKEN:
-        case K_PRIVATE_TOKEN:
-        case K_PROTECTED_TOKEN:
-        case K_STATIC_TOKEN:
-        case K_CLASS_TOKEN:
-            data->index--;
-            data->st_data = empty_base_entry();
-            transition(scan_class, END_ERROR);
-        default:
-            data->index++;
-            break;
-        }
     }
 }
 
@@ -628,16 +634,15 @@ StringDict* scan_content(TokenList tokens, unsigned int* index) {
             }
             else {
                 throw_unexpected_end(&tokens.tokens[data.index]);
-                string_dict_destroy(dict);
-                free(data.st_data);
-                return NULL;
+                error = true;
+                break;
             }
         }
     }
     if (error) {
         data.index--;
         *index = data.index;
-        string_dict_destroy(dict);
+        free_scan_result(NULL, dict);
         free(data.st_data);
         return NULL;
     }

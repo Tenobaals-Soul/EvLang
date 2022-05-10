@@ -1,5 +1,11 @@
 class ExampleClass {
-    int num = (5);
+    int var, num = (5), other_var;
+    int subtract (int a, int b) {
+
+    }
+    int subtract (float a, float b) {
+
+    }
     int add(int a, int b) {
         return a + b;
     }

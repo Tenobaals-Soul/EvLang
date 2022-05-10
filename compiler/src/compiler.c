@@ -23,8 +23,8 @@ void set_enviroment(const char* new_enviroment) {
 
 void message_internal(const char* color_code, const char* line, unsigned int line_no,
         unsigned int char_no, unsigned int len, const char* message, ...) {
+    char_no++;
     printf("%s %u:%u ", enviroment, line_no, char_no);
-    char_no--;
     va_list l;
     va_start(l, message);
     vprintf(message, l);
