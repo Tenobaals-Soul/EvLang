@@ -18,7 +18,7 @@ typedef enum BasicOperator {
 } BasicOperator;
 
 typedef enum TokenType {
-    EOF_TOKEN = -1, END_TOKEN, IDENTIFIER_TOKEN,
+    END_TOKEN, IDENTIFIER_TOKEN,
     FIXED_VALUE_TOKEN, OPERATOR_TOKEN,
     OPEN_PARANTHESIS_TOKEN, CLOSE_PARANTHESIS_TOKEN,
     OPEN_BLOCK_TOKEN, CLOSE_BLOCK_TOKEN,
@@ -30,9 +30,7 @@ typedef enum TokenType {
     C_IF_TOKEN, C_FOR_TOKEN, C_WHILE_TOKEN,
     C_BREAK_TOKEN, C_RETURN_TOKEN,
     C_SWITCH_TOKEN, C_CASE_TOKEN,
-    C_DEFAULT_TOKEN,
-
-    TOKEN_TYPE_COUNT
+    C_DEFAULT_TOKEN
 } TokenType;
 
 typedef struct Token {

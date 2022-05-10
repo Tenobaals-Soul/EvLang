@@ -369,7 +369,7 @@ state scan_class_found_name(state_data* data) {
             transition(NULL, END_ERROR);
         }
         data->st_data->type = ENTRY_VARIABLE;
-        transition(scan_class_found_name, 0);
+        transition(var_got_assigned, 0);
     case OPEN_PARANTHESIS_TOKEN:
         data->st_data->type = ENTRY_METHOD;
         transition(scan_method_expect_arg_type, 0);
@@ -405,7 +405,7 @@ state scan_class_found_name_no_method(state_data* data) {
             transition(NULL, END_ERROR);
         }
         data->st_data->type = ENTRY_VARIABLE;
-        transition(scan_class_found_name, 0);
+        transition(var_got_assigned, 0);
     default:
         throw_perhaps_missing_assign(token);
         transition(NULL, END_ERROR);
@@ -440,7 +440,7 @@ char inverse_bracket(char bracket) {
 }
 
 state var_got_assigned(state_data* data) {
-    data->st_data->var.expression_start_index = data->index;
+    data->st_data->text = data->index;
     int layer = 0;
     char type = 0;
     while (true) {
@@ -451,21 +451,73 @@ state var_got_assigned(state_data* data) {
         Token* token = &data->token_list.tokens[data->index];
         switch (token->type) {
         case END_TOKEN:
-            data->st_data = empty_base_entry();
+            flush_stacked_data(data);
             if (layer == 0) transition(scan_class, 0);
             break;
         case OPEN_BLOCK_TOKEN:
+            if (type) {
+                throw_raw_expected(token, "%c expected", inverse_bracket(type));
+                return skip(data);
+            }
+            type = '{';
+            layer++;
+            break;
+        case CLOSE_BLOCK_TOKEN:
+            if (type != '{') {
+                throw_raw_expected(token, "%c expected", inverse_bracket(type));
+                return skip(data);
+            }
+            layer--;
+            if (layer == 0) type = 0;
+            else if (layer < 0) {
+                throw_raw_expected(token, "unexpected %c", inverse_bracket(type));
+                return skip(data);
+            }
+            break;
         case OPEN_INDEX_TOKEN:
+            if (type) {
+                throw_raw_expected(token, "%c expected", inverse_bracket(type));
+                return skip(data);
+            }
+            type = '[';
+            layer++;
+            break;
+        case CLOSE_INDEX_TOKEN:
+            if (type != '[') {
+                throw_raw_expected(token, "%c expected", inverse_bracket(type));
+                return skip(data);
+            }
+            layer--;
+            if (layer == 0) type = 0;
+            else if (layer < 0) {
+                throw_raw_expected(token, "unexpected %c", inverse_bracket(type));
+                return skip(data);
+            }
+            break;
         case OPEN_PARANTHESIS_TOKEN:
             if (type) {
                 throw_raw_expected(token, "%c expected", inverse_bracket(type));
                 return skip(data);
             }
+            type = '(';
+            layer++;
+            break;
+        case CLOSE_PARANTHESIS_TOKEN:
+            if (type != '(') {
+                throw_raw_expected(token, "%c expected", inverse_bracket(type));
+                return skip(data);
+            }
+            layer--;
+            if (layer == 0) type = 0;
+            else if (layer < 0) {
+                throw_raw_expected(token, "unexpected %c", inverse_bracket(type));
+                return skip(data);
+            }
             break;
         case SEPERATOR_TOKEN:;
-            StackedData* new_entry = empty_base_entry();
-            *new_entry = *data->st_data;
-            data->st_data = new_entry;
+            StackedData* old_entry = data->st_data;
+            flush_stacked_data(data);
+            *data->st_data = *old_entry;
             if (layer == 0) transition(scan_class_found_type_no_method, 0);
         default:
             break;
@@ -519,6 +571,7 @@ state scan_method_args_ended(state_data* data) {
     Token* token = get_token(data);
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
+        data->st_data->text = data->index;
         transition(scan_method_body, 0);
     default:
         throw_raw_expected(token, "expected \"{\"");
@@ -570,10 +623,13 @@ StringDict* scan_content(TokenList tokens, unsigned int* index) {
             data.index--;
             if (data.flags & END_FINE) {
                 *index = data.index;
+                free(data.st_data);
                 return dict;
             }
             else {
                 throw_unexpected_end(&tokens.tokens[data.index]);
+                string_dict_destroy(dict);
+                free(data.st_data);
                 return NULL;
             }
         }
@@ -581,9 +637,12 @@ StringDict* scan_content(TokenList tokens, unsigned int* index) {
     if (error) {
         data.index--;
         *index = data.index;
+        string_dict_destroy(dict);
+        free(data.st_data);
         return NULL;
     }
     data.index--;
     *index = data.index;
+    free(data.st_data);
     return dict;
 }

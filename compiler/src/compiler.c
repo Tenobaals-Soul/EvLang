@@ -21,13 +21,13 @@ void set_enviroment(const char* new_enviroment) {
     }
 }
 
-void make_error(const char* line, unsigned int line_no, unsigned int char_no, 
-        unsigned int len, const char * error_message, ...) {
+void message_internal(const char* color_code, const char* line, unsigned int line_no,
+        unsigned int char_no, unsigned int len, const char* message, ...) {
     printf("%s %u:%u ", enviroment, line_no, char_no);
     char_no--;
     va_list l;
-    va_start(l, error_message);
-    vprintf(error_message, l);
+    va_start(l, message);
+    vprintf(message, l);
     va_end(l);
     putchar('\n');
     unsigned int print_len = 0;
@@ -39,7 +39,7 @@ void make_error(const char* line, unsigned int line_no, unsigned int char_no,
             print_len += isprint(line[i]) ? 1 : 0;
         }
     }
-    printf("\e[91m");
+    printf("%s", color_code);
     for (; line[i] && line[i] != '\n' && i < char_no + len; i++) {
         if (!iscntrl(line[i])) {
             putchar(line[i]);
@@ -61,7 +61,7 @@ void make_error(const char* line, unsigned int line_no, unsigned int char_no,
         for (unsigned int i = 0; i < char_no; i++) {
             putchar(' ');
         }
-        printf("\e[91m");
+        printf("%s", color_code);
         for (unsigned int i = char_no; i < print_len; i++) {
             putchar('^');
         }
@@ -69,53 +69,80 @@ void make_error(const char* line, unsigned int line_no, unsigned int char_no,
     }
 }
 
+void make_error(const char* line, unsigned int line_no, unsigned int char_no, 
+        unsigned int len, const char* error_message, ...) {
+    printf("%s %u:%u ", enviroment, line_no, char_no);
+    char_no--;
+    va_list l;
+    va_start(l, error_message);
+    message_internal("\033[91m", line, line_no, char_no, len, error_message, l);
+    va_end(l);
+}
+
+void make_warning(const char* line, unsigned int line_no, unsigned int char_no, 
+        unsigned int len, const char * warning_message, ...) {
+    printf("%s %u:%u ", enviroment, line_no, char_no);
+    char_no--;
+    va_list l;
+    va_start(l, warning_message);
+    message_internal("\033[91m", line, line_no, char_no, len, warning_message, l);
+    va_end(l);
+}
+
 void print_tokens(TokenList l) {
     for (unsigned long i = 0; i < l.cursor; i++) {
+        if (i) printf(" ");
         switch (l.tokens[i].type) {
         case END_TOKEN:
-            printf(";\n");
-            break; 
+            printf(";");
+            break;
         case K_CLASS_TOKEN:
-            printf("\e[94m%s\e[0m ", "class");
+            printf("\e[94m%s\e[0m", "class");
             break; 
         case K_PRIVATE_TOKEN:
-            printf("\e[94m%s\e[0m ", "private");
+            printf("\e[94m%s\e[0m", "private");
             break; 
         case K_PROTECTED_TOKEN:
-            printf("\e[94m%s\e[0m ", "protected");
+            printf("\e[94m%s\e[0m", "protected");
             break; 
         case K_PUBLIC_TOKEN:
-            printf("\e[94m%s\e[0m ", "public");
+            printf("\e[94m%s\e[0m", "public");
             break; 
         case K_DERIVES_TOKEN:
-            printf("\e[94m%s\e[0m ", "derives");
+            printf("\e[94m%s\e[0m", "derives");
+            break;
+        case K_IMPLEMENTS_TOKEN:
+            printf("\e[94m%s\e[0m", "implements");
+            break;
+        case K_STATIC_TOKEN:
+            printf("\e[94m%s\e[0m", "static");
             break;
         case C_BREAK_TOKEN:
-            printf("\e[94m%s\e[0m ", "break");
+            printf("\e[94m%s\e[0m", "break");
             break;
         case C_CASE_TOKEN:
-            printf("\e[94m%s\e[0m ", "case");
+            printf("\e[94m%s\e[0m", "case");
             break;
         case C_DEFAULT_TOKEN:
-            printf("\e[94m%s\e[0m ", "default");
+            printf("\e[94m%s\e[0m", "default");
             break;
         case C_FOR_TOKEN:
-            printf("\e[94m%s\e[0m ", "for");
+            printf("\e[94m%s\e[0m", "for");
             break;
         case C_IF_TOKEN:
-            printf("\e[94m%s\e[0m ", "if");
+            printf("\e[94m%s\e[0m", "if");
             break;
         case C_RETURN_TOKEN:
-            printf("\e[94m%s\e[0m ", "return");
+            printf("\e[94m%s\e[0m", "return");
             break;
         case C_SWITCH_TOKEN:
-            printf("\e[94m%s\e[0m ", "switch");
+            printf("\e[94m%s\e[0m", "switch");
             break;
         case C_WHILE_TOKEN:
-            printf("\e[94m%s\e[0m ", "while");
+            printf("\e[94m%s\e[0m", "while");
             break;
         case IDENTIFIER_TOKEN:
-            printf("%s ", l.tokens[i].identifier);
+            printf("%s", l.tokens[i].identifier);
             break;
         case FIXED_VALUE_TOKEN:
             if (l.tokens[i].fixed_value.type == STRING) {
@@ -131,11 +158,12 @@ void print_tokens(TokenList l) {
                 printf("\e[32m%s\e[0m", l.tokens->fixed_value.value.boolean ? "true" : "false");
             }
             else {
-                printf("<val:?>");
+                printf("detected fatal internal error - error type detected - %d\n", __LINE__);
+                exit(1);
             }
             break;
         case OPERATOR_TOKEN:
-            printf(" <op> ");
+            printf("<op>");
             break;
         case OPEN_PARANTHESIS_TOKEN:
             printf("(");
@@ -144,10 +172,10 @@ void print_tokens(TokenList l) {
             printf(")");
             break;
         case OPEN_BLOCK_TOKEN:
-            printf("{\n");
+            printf("{");
             break;
         case CLOSE_BLOCK_TOKEN:
-            printf("}\n");
+            printf("}");
             break;
         case OPEN_INDEX_TOKEN:
             printf("[");
@@ -156,14 +184,14 @@ void print_tokens(TokenList l) {
             printf("]");
             break;
         case SEPERATOR_TOKEN:
-            printf(", ");
+            printf(",");
             break;
         case DOT_TOKEN:
             printf(".");
             break;
         default:
-            printf("???");
-            break;
+            printf("detected fatal internal error - error type detected - %d\n", __LINE__);
+            exit(1);
         }
     }
     printf("\n");
@@ -240,6 +268,7 @@ void free_single_scan_result(const char* key, void* val) {
     switch (entry->type) {
     case ENTRY_CLASS:
         string_dict_foreach(entry->class.class_content, free_single_scan_result);
+        string_dict_destroy(entry->class.class_content);
         free(entry->class.class_content);
         break;
     case ENTRY_METHOD:
@@ -249,6 +278,7 @@ void free_single_scan_result(const char* key, void* val) {
         for (unsigned int i = 0; i < entry->method_table.len; i++) {
             free_single_scan_result(key, entry->method_table.methods[i]);
         }
+        free(entry->method_table.methods);
         break;
     case ENTRY_VARIABLE:
         break;
@@ -263,6 +293,8 @@ void free_single_scan_result(const char* key, void* val) {
 void free_scan_result(const char* key, void* val) {
     (void) key;
     string_dict_foreach(val, free_single_scan_result);
+    string_dict_destroy(val);
+    free(val);
 }
 
 int main(int argc, char** argv) {
@@ -304,5 +336,6 @@ int main(int argc, char** argv) {
         free(file_contents[i]);
     }
     string_dict_foreach(&general_identifier_dict, free_scan_result);
+    string_dict_destroy(&general_identifier_dict);
     free_tokens(token_lists, argc);
 }

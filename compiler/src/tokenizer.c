@@ -104,11 +104,11 @@ int try_extract_identifier_or_keyword(current_read_data * cr, StringDict * dict,
     return 0;
 }
 
-static int t_get_number(current_read_data * cr, const char ** src, TokenList * list) {
+static int t_get_number(current_read_data* cr, const char** src, TokenList* list) {
     const char * before = *src;
     long double value_found = strtold(before, (void*) src);
     if (before != *src) {
-        unsigned long len = ((ulong) src) - ((ulong) before);
+        unsigned long len = ((ulong) *src) - ((ulong) before);
         cr->current_char += len;
         list->tokens[list->cursor].char_in_line = cr->current_char;
         list->tokens[list->cursor].line_in_file = cr->current_line;

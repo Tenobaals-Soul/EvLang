@@ -18,9 +18,9 @@ typedef struct StackedData {
     Accessability accessability;
     bool is_static;
     Token* causing;
+    unsigned int text;
     struct {
         char* type;
-        unsigned int expression_start_index;
     } var;
     struct {
         StringDict* class_content;
