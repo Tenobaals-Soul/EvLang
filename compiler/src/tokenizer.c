@@ -31,6 +31,7 @@ char* read_next_identifier(const char * src, unsigned long * len) {
 }
 
 typedef struct current_read_data {
+    bool error;
     const char * line_begin;
     unsigned int current_char;
     unsigned int current_line;
@@ -57,7 +58,7 @@ int t_get_bool(char * identifier, unsigned long len, current_read_data * cr, Tok
         list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = len;
         list->tokens[list->cursor].type = FIXED_VALUE_TOKEN;
-        list->tokens[list->cursor].fixed_value.type = NUMBER;
+        list->tokens[list->cursor].fixed_value.type = BOOLEAN;
         list->tokens[list->cursor].fixed_value.value.boolean = true;
         return 1;
     }
@@ -67,7 +68,7 @@ int t_get_bool(char * identifier, unsigned long len, current_read_data * cr, Tok
         list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = len;
         list->tokens[list->cursor].type = FIXED_VALUE_TOKEN;
-        list->tokens[list->cursor].fixed_value.type = NUMBER;
+        list->tokens[list->cursor].fixed_value.type = BOOLEAN;
         list->tokens[list->cursor].fixed_value.value.boolean = false;
         return 1;
     }
@@ -90,7 +91,7 @@ void t_get_keyword_or_identifier(char* identifier, unsigned long len, current_re
     }
 }
 
-int try_extract_identifier_or_keyword(current_read_data * cr, StringDict * dict, const char ** src, TokenList * list) {
+int try_extract_identifier_or_keyword(current_read_data* cr, StringDict* dict, const char** src, TokenList* list) {
     unsigned long len;
     char * identifier = read_next_identifier(*src, &len);
     if (identifier) {
@@ -104,10 +105,124 @@ int try_extract_identifier_or_keyword(current_read_data * cr, StringDict * dict,
     return 0;
 }
 
+enum parse_number_res { NO_NUMBER, FLOATING_NUMBER, INTERGER_NUMBER };
+
+enum parse_number_res parse_binary_number(current_read_data* cr, const char** src, long double* f_out, unsigned long long* i_out) {
+    const char* old = *src;
+    unsigned long long i_buffer = 0;
+    while (**src == '0' || **src == '1') {
+        i_buffer = i_buffer << 1;
+        i_buffer += **src == '1';
+        ++*src;
+    }
+    if (**src != '.') {
+        *i_out = i_buffer;
+        return INTERGER_NUMBER;
+    }
+    ++*src;
+    if (!(**src == '0' || **src == '1')) {
+        make_error(cr->line_begin, cr->current_line, cr->current_char, (unsigned long) *src - (unsigned long) old,
+            "illegal number literal format");
+        return NO_NUMBER;
+    }
+    long double f_buffer = i_buffer;
+    for (unsigned int i = 1; (**src == '0' || **src == '1') && (1 << i) != 0; i++, ++*src) {
+        f_buffer += (long double) (**src == '1') / (long double) (1 << i);
+    }
+    *f_out = f_buffer;
+    return FLOATING_NUMBER;
+}
+
+enum parse_number_res parse_octal_number(current_read_data* cr, const char** src, long double* f_out, unsigned long long* i_out) {
+    const char* old = *src;
+    unsigned long long i_buffer = 0;
+    while (**src >= '0' && **src <= '7') {
+        i_buffer = i_buffer << 3; // times 8
+        i_buffer += **src - '0';
+        ++*src;
+    }
+    if (**src != '.') {
+        *i_out = i_buffer;
+        return INTERGER_NUMBER;
+    }
+    ++*src;
+    if (!(**src >= '0' && **src <= '7')) {
+        make_error(cr->line_begin, cr->current_line, cr->current_char, (unsigned long) *src - (unsigned long) old + 2,
+            "illegal number literal format");
+        return NO_NUMBER;
+    }
+    long double f_buffer = i_buffer;
+    for (unsigned int i = 3; (**src >= '0' && **src <= '7') && (1 << i) != 0; i += 3, ++*src) {
+        f_buffer += (long double) (**src - '0') / (long double) (1 << i);
+    }
+    *f_out = f_buffer;
+    return FLOATING_NUMBER;
+}
+
+enum parse_number_res parse_decimal_number(current_read_data* cr, const char** src, long double* f_out, unsigned long long* i_out) {
+    const char* old = *src;
+    *i_out = strtoll(*src, (void*) src, 10);
+    if (old == *src) {
+        return NO_NUMBER;
+    }
+    if (**src != '.') {
+        return INTERGER_NUMBER;
+    }
+    *src = old;
+    *f_out = strtold(*src, (void*) src);
+    if (old == *src) {
+        make_error(cr->line_begin, cr->current_line, cr->current_char, (unsigned long) *src - (unsigned long) old,
+            "illegal number literal format");
+        return NO_NUMBER;
+    }
+    return FLOATING_NUMBER;
+}
+
+enum parse_number_res parse_hexadecimal_number(current_read_data* cr, const char** src, long double* f_out, unsigned long long* i_out) {
+    const char* old = *src;
+    *i_out = strtoll(*src + 2, (void*) src, 16);
+    if (old == *src) {
+        return NO_NUMBER;
+    }
+    if (**src != '.') {
+        return INTERGER_NUMBER;
+    }
+    *src = old;
+    *f_out = strtold(*src, (void*) src);
+    if (old == *src) {
+        make_error(cr->line_begin, cr->current_line, cr->current_char, (unsigned long) *src - (unsigned long) old,
+            "illegal number literal format");
+        return NO_NUMBER;
+    }
+    return FLOATING_NUMBER;
+}
+
+enum parse_number_res parse_number(current_read_data* cr, const char** src, long double* f_out, unsigned long long* i_out) {
+    if (**src == '0') {
+        ++*src;
+        switch (**src) {
+        case 'b':
+            ++*src;
+            return parse_binary_number(cr, src, f_out, i_out);
+        case 'o':
+            ++*src;
+            return parse_octal_number(cr, src, f_out, i_out);
+        case 'x':
+            --*src;
+            return parse_hexadecimal_number(cr, src, f_out, i_out);
+        default:
+            return parse_octal_number(cr, src, f_out, i_out);
+        }
+    }
+    return parse_decimal_number(cr, src, f_out, i_out);
+}
+
 static int t_get_number(current_read_data* cr, const char** src, TokenList* list) {
-    const char * before = *src;
-    long double value_found = strtold(before, (void*) src);
-    if (before != *src) {
+    const char* before = *src;
+    long double floating_value_found;
+    unsigned long long integer_value_found;
+    enum parse_number_res res = parse_number(cr, src, &floating_value_found, &integer_value_found);
+    if (res != NO_NUMBER) {
         unsigned long len = ((ulong) *src) - ((ulong) before);
         cr->current_char += len;
         list->tokens[list->cursor].char_in_line = cr->current_char;
@@ -115,9 +230,18 @@ static int t_get_number(current_read_data* cr, const char** src, TokenList* list
         list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = len;
         list->tokens[list->cursor].type = FIXED_VALUE_TOKEN;
-        list->tokens[list->cursor].fixed_value.type = NUMBER;
-        list->tokens[list->cursor].fixed_value.value.floating = value_found;
+        if (res == FLOATING_NUMBER) {
+            list->tokens[list->cursor].fixed_value.type = FLOATING;
+            list->tokens[list->cursor].fixed_value.value.floating = floating_value_found;
+        }
+        else {
+            list->tokens[list->cursor].fixed_value.type = INTEGER;
+            list->tokens[list->cursor].fixed_value.value.integer = integer_value_found;
+        }
         return 1;
+    }
+    else {
+        *src = before;
     }
     return 0;
 }
@@ -277,10 +401,11 @@ int try_extract_dot(current_read_data * cr, const char ** src, TokenList * list)
     return 0;
 }
 
-unsigned int t_err(current_read_data * cr, const char ** src) {
+unsigned int t_err(current_read_data* cr, const char** src) {
+    cr->error = true;
     unsigned int len = 0;
     unsigned int off = 0;
-    while (**src && **src != '\n' && !isspace((*src)[len])) len++;
+    while (**src && **src != '\n' && !(isspace((*src)[len]) || ispunct((*src)[len]))) len++;
     char * str_buffer = malloc(len * 4 + 1);
     for (unsigned int i = 0; i < len; i++) {
         if (isprint((*src)[i])) {
@@ -301,18 +426,6 @@ unsigned int t_err(current_read_data * cr, const char ** src) {
 }
 
 int extract_next(current_read_data* cr, StringDict* dict, const char** src, TokenList* list) {
-    while (isspace(**src) || **src == '\n') {
-        if (**src == '\n') {
-            cr->current_line++;
-            cr->current_char = 1;
-            ++*src;
-            cr->line_begin = *src;
-        }
-        else {
-            cr->current_char++;
-            ++*src;
-        }
-    }
     if (try_extract_end(cr, src, list)) return 1;
     if (try_extract_identifier_or_keyword(cr, dict, src, list)) return 1;
     if (try_extract_fixed_value(cr, src, list)) return 1;
@@ -344,7 +457,22 @@ void init_keyword_dict(StringDict * dict) {
     string_dict_put(dict, "default", (void*) C_DEFAULT_TOKEN);
 }
 
-TokenList lex(const char * src) {
+void consume_white_space(current_read_data* cr, const char** src) {
+    while (isspace(**src) || **src == '\n') {
+        if (**src == '\n') {
+            cr->current_line++;
+            cr->current_char = 1;
+            ++*src;
+            cr->line_begin = *src;
+        }
+        else {
+            cr->current_char++;
+            ++*src;
+        }
+    }
+}
+
+TokenList lex(const char* src) {
     StringDict keyword_dict;
     init_keyword_dict(&keyword_dict);
     unsigned long capacity = 128;
@@ -353,16 +481,24 @@ TokenList lex(const char * src) {
         .cursor = 0
     };
     current_read_data cr = {
+        .error = false,
         .line_begin = src,
         .current_line = 1,
         .current_char = 1
     };
-    while (*src) {
+    while (true) {
+        consume_white_space(&cr, &src);
+        if (!*src) break;
         if (extract_next(&cr, &keyword_dict, &src, &list)) {
             capacity = advance(&list, capacity);
         }
     }
     string_dict_destroy(&keyword_dict);
     list.tokens = realloc(list.tokens, sizeof(Token) * list.cursor);
+    if (cr.error) {
+        free(list.tokens);
+        list.tokens = NULL;
+        list.cursor = 0;
+    }
     return list;
 }

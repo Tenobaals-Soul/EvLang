@@ -4,7 +4,7 @@
 #include<stdbool.h>
 
 typedef enum FixedDataType {
-    NUMBER, STRING, BOOLEAN, CHARACTER
+    INTEGER, FLOATING, STRING, BOOLEAN, CHARACTER
 } FixedDataType;
 
 typedef enum BasicOperator {

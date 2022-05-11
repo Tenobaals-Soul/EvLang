@@ -56,7 +56,7 @@ void message_internal(const char* color_code, const char* line, unsigned int lin
         print_len++;
     }
     putchar('\n');
-    if (char_no < print_len) {
+    if (char_no <= print_len) {
         printf("     | ");
         for (unsigned int i = 0; i < char_no; i++) {
             putchar(' ');
@@ -151,7 +151,10 @@ void print_tokens(TokenList l) {
             else if (l.tokens[i].fixed_value.type == CHARACTER) {
                 printf("\e[32m\'%s\'\e[0m", l.tokens[i].fixed_value.value.string);
             }
-            else if (l.tokens[i].fixed_value.type == NUMBER) {
+            else if (l.tokens[i].fixed_value.type == INTEGER) {
+                printf("\e[32m%llu\e[0m", (unsigned long long int) l.tokens[i].fixed_value.value.integer);
+            }
+            else if (l.tokens[i].fixed_value.type == FLOATING) {
                 printf("\e[32m%Lf\e[0m", l.tokens[i].fixed_value.value.floating);
             }
             else if (l.tokens[i].fixed_value.type == BOOLEAN) {
@@ -323,6 +326,7 @@ int main(int argc, char** argv) {
         close(fd);
         file_content[len] = 0;
         token_lists[i - 1] = lex(file_content);
+        if (token_lists[i - 1].tokens == NULL) continue;
         file_contents[i - 1] = file_content;
         print_tokens(token_lists[i - 1]);
         unsigned int index = 0;

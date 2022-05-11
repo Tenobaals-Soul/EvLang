@@ -122,7 +122,7 @@ void throw_no_semicolon(Token* token_with_error) {
 
 void throw_unexpected_end(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
-        token_with_error->char_in_line + 1, 1,
+        token_with_error->char_in_line + token_with_error->text_len - 1, 1,
         "unexpected EOF");
 }
 
@@ -620,24 +620,23 @@ StringDict* scan_content(TokenList tokens, unsigned int* index) {
         .flags = 0
     };
     while (next_state.func) {
-        next_state = next_state.func(&data);
-        if (data.flags & END_ERROR) {
-            error = true;
-        }
-        data.index++;
         if (data.index >= data.token_list.cursor) {
-            data.index--;
             if (data.flags & END_FINE) {
                 *index = data.index;
                 free(data.st_data);
                 return dict;
             }
             else {
-                throw_unexpected_end(&tokens.tokens[data.index]);
+                throw_unexpected_end(&tokens.tokens[data.index - 1]);
                 error = true;
                 break;
             }
         }
+        next_state = next_state.func(&data);
+        if (data.flags & END_ERROR) {
+            error = true;
+        }
+        data.index++;
     }
     if (error) {
         data.index--;

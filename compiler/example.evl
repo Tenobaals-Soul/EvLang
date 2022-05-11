@@ -13,4 +13,3 @@ class ExampleClass {
 
 class AnOtherExampleClass {
     class InnerExampleClass {}
-}
