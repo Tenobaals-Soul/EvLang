@@ -1,4 +1,4 @@
-class ExampleClass {
+class ExampleClass derives AnOtherExampleClass {
     int var, num = (5), other_var;
     int subtract (int a, int b) {
 
@@ -13,3 +13,4 @@ class ExampleClass {
 
 class AnOtherExampleClass {
     class InnerExampleClass {}
+}

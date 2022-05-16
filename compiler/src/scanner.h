@@ -4,7 +4,7 @@
 #include"compiler.h"
 
 typedef enum EntryType {
-    ERROR_TYPE, ENTRY_CLASS, ENTRY_METHOD_TABLE, ENTRY_VARIABLE, ENTRY_METHOD
+    ERROR_TYPE, ENTRY_CLASS, ENTRY_METHOD_TABLE, ENTRY_VARIABLE, ENTRY_METHOD, ENTRY_ERROR
 } EntryType;
 
 typedef enum Accessability {
@@ -14,6 +14,7 @@ typedef enum Accessability {
 typedef struct StackedData {
     EntryType type;
     char* name;
+    char* path;
     unsigned int line_no;
     Accessability accessability;
     bool is_static;
@@ -24,6 +25,7 @@ typedef struct StackedData {
     } var;
     struct {
         StringDict* class_content;
+        StringDict* packed;
         char* derives_from;
         char** implements;
         unsigned int implements_len;

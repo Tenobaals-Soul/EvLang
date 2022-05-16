@@ -446,6 +446,8 @@ void init_keyword_dict(StringDict * dict) {
     string_dict_put(dict, "private", (void*) K_PRIVATE_TOKEN);
     string_dict_put(dict, "class", (void*) K_CLASS_TOKEN);
     string_dict_put(dict, "static", (void*) K_STATIC_TOKEN);
+    string_dict_put(dict, "derives", (void*) K_DERIVES_TOKEN);
+    string_dict_put(dict, "implements", (void*) K_IMPLEMENTS_TOKEN);
 
     string_dict_put(dict, "if", (void*) C_IF_TOKEN);
     string_dict_put(dict, "for", (void*) C_FOR_TOKEN);

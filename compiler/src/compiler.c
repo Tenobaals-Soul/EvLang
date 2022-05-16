@@ -200,20 +200,17 @@ void print_tokens(TokenList l) {
     printf("\n");
 }
 
-void free_tokens(TokenList* token_lists, int count) {
-    for (int i = 1; i < count; i++) {
-        for (unsigned long j = 0; j < token_lists->cursor; j++) {
-            Token * t = token_lists[i - 1].tokens + j;
-            if (t->type == IDENTIFIER_TOKEN) {
-                free(t->identifier);
-            }
-            else if (t->type == FIXED_VALUE_TOKEN && (t->fixed_value.type == STRING || t->fixed_value.type == CHARACTER)) {
-                free(t->fixed_value.value.string);
-            }
+void free_tokens(TokenList token_list) {
+    for (unsigned long j = 0; j < token_list.cursor; j++) {
+        Token * t = token_list.tokens + j;
+        if (t->type == IDENTIFIER_TOKEN) {
+            free(t->identifier);
         }
-        free(token_lists[i - 1].tokens);
+        else if (t->type == FIXED_VALUE_TOKEN && (t->fixed_value.type == STRING || t->fixed_value.type == CHARACTER)) {
+            free(t->fixed_value.value.string);
+        }
     }
-    free(token_lists);
+    free(token_list.tokens);
 }
 
 void print_single_result_internal(void* enviroment, const char* name, void* val) {
@@ -249,6 +246,10 @@ void print_single_result_internal(void* enviroment, const char* name, void* val)
     case ENTRY_VARIABLE:
         printf("%s%s %s\n", indent, entry->var.type, name);
         break;
+    case ENTRY_ERROR:
+        make_error(entry->causing->line_content, entry->causing->line_in_file, entry->causing->char_in_line,
+            entry->causing->text_len, entry->name);
+        break;
     case ERROR_TYPE:
         printf("detected fatal internal error - error type detected - %d\n", __LINE__);
         exit(1);
@@ -270,11 +271,23 @@ void free_single_scan_result(const char* key, void* val) {
     StackedData* entry = val;
     switch (entry->type) {
     case ENTRY_CLASS:
+        free(entry->name);
         string_dict_foreach(entry->class.class_content, free_single_scan_result);
         string_dict_destroy(entry->class.class_content);
+        for (unsigned int i = 0; i < entry->class.implements_len; i++) {
+            free(entry->class.implements[i]);
+        }
+        if (entry->class.implements) free(entry->class.implements);
+        if (entry->class.derives_from) free(entry->class.derives_from);
         free(entry->class.class_content);
         break;
     case ENTRY_METHOD:
+        free(entry->name);
+        free(entry->method.return_type);
+        for (unsigned int i = 0; i < entry->method.arg_count; i++) {
+            free(entry->method.args[i].name);
+            free(entry->method.args[i].type);
+        }
         free(entry->method.args);
         break;
     case ENTRY_METHOD_TABLE:
@@ -284,6 +297,11 @@ void free_single_scan_result(const char* key, void* val) {
         free(entry->method_table.methods);
         break;
     case ENTRY_VARIABLE:
+        free(entry->name);
+        free(entry->var.type);
+        break;
+    case ENTRY_ERROR:
+        free(entry->name);
         break;
     case ERROR_TYPE:
         printf("detected fatal internal error - error type detected - %d\n", __LINE__);
@@ -307,7 +325,6 @@ int main(int argc, char** argv) {
             exit(0);
         }
     }
-    TokenList* token_lists = malloc(sizeof(TokenList) * (argc - 1));
     StringDict general_identifier_dict;
     string_dict_init(&general_identifier_dict);
     char* file_contents[argc - 1];
@@ -325,21 +342,22 @@ int main(int argc, char** argv) {
         read(fd, file_content, len);
         close(fd);
         file_content[len] = 0;
-        token_lists[i - 1] = lex(file_content);
-        if (token_lists[i - 1].tokens == NULL) continue;
+        TokenList token_list;
+        token_list = lex(file_content);
+        if (token_list.tokens == NULL) continue;
         file_contents[i - 1] = file_content;
-        print_tokens(token_lists[i - 1]);
+        print_tokens(token_list);
         unsigned int index = 0;
-        StringDict* content = scan_content(token_lists[i - 1], &index);
+        StringDict* content = scan_content(token_list, &index);
         if (content) {
             print_scan_result(content);
-            string_dict_put(&general_identifier_dict, argv[i], content);   
+            string_dict_put(&general_identifier_dict, argv[i], content);
         }
+        free_tokens(token_list);
     }
     for (int i = 0; i < argc - 1; i++) {
         free(file_contents[i]);
     }
     string_dict_foreach(&general_identifier_dict, free_scan_result);
     string_dict_destroy(&general_identifier_dict);
-    free_tokens(token_lists, argc);
 }

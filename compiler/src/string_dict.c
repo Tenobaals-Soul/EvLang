@@ -26,14 +26,14 @@ static int hash_string(const char* string) {
 
 static void append_to_string_dict_items(struct string_dict_item** list_pos, const char* key, void* val) {
     while (*list_pos) {
-        struct string_dict_item * current = *list_pos;
+        struct string_dict_item* current = *list_pos;
         if (strcmp(current->key, key) == 0) {
             current->val = val;
             return;
         }
         *list_pos = current->next;
     }
-    struct string_dict_item * item = malloc(sizeof(struct string_dict_item));
+    struct string_dict_item* item = malloc(sizeof(struct string_dict_item));
     item->next = NULL;
     *list_pos = item;
     item->key = malloc(strlen(key) + 1);
@@ -43,7 +43,7 @@ static void append_to_string_dict_items(struct string_dict_item** list_pos, cons
 
 static void remove_from_string_dict_items(struct string_dict_item ** list_pos, const char* key) {
     while (*list_pos) {
-        struct string_dict_item * current = *list_pos;
+        struct string_dict_item* current = *list_pos;
         if (strcmp(current->key, key) == 0) {
             (*list_pos) = current->next;
             free(current->key);
@@ -68,7 +68,7 @@ void string_dict_put(StringDict* dict, const char* key, void* val) {
 
 void* string_dict_get(StringDict* dict, const char* key) {
     int index_pos = ((unsigned) hash_string(key)) % STRING_DICT_TABLE_SIZE;
-    struct string_dict_item * current = dict->items[index_pos];
+    struct string_dict_item* current = dict->items[index_pos];
     while (current) {
         if (strcmp(current->key, key) == 0) {
             return current->val;
@@ -117,11 +117,62 @@ void string_dict_complex_foreach(StringDict* dict, void (*action)
     do {
         i--;
         if (dict->items[i]) {
-            struct string_dict_item * current = dict->items[i];
+            struct string_dict_item* current = dict->items[i];
             while (current) {
                 action(enviroment, current->key, current->val);
                 current = current->next;
             }
         }
     } while(i);
+}
+
+struct copy_env {
+    StringDict* dest;
+    unsigned int counter;
+    void* enviroment;
+    union {
+        bool (*condition)(const char* key, void* val);
+        bool (*complex_condition)(void* enviroment, const char* key, void* val);
+    };
+};
+
+static void string_dict_copy_internal(void* enviroment, const char* key, void* val) {
+    struct copy_env* env = enviroment;
+    string_dict_put(env->dest, key, val);
+    env->counter++;
+}
+
+static void string_dict_copy_if_internal(void* enviroment, const char* key, void* val) {
+    struct copy_env* env = enviroment;
+    if (env->condition(key, val)) {
+        string_dict_put(env->dest, key, val);
+        env->counter++;
+    }
+}
+
+static void string_dict_copy_complex_if_internal(void* enviroment, const char* key, void* val) {
+    struct copy_env* env = enviroment;
+    if (env->complex_condition(env->enviroment, key, val)) {
+        string_dict_put(env->dest, key, val);
+        env->counter++;
+    }
+}
+
+unsigned int string_dict_copy(StringDict* dest, StringDict* src) {
+    struct copy_env env = { dest, 0, NULL, {NULL}};
+    string_dict_complex_foreach(src, string_dict_copy_internal, &env);
+    return env.counter;
+}
+
+unsigned int string_dict_copy_if(StringDict* dest, StringDict* src, bool (*condition)(const char* key, void* val)) {
+    struct copy_env env = { dest, 0, NULL, {.condition = condition}};
+    string_dict_complex_foreach(src, string_dict_copy_if_internal, &env);
+    return env.counter;
+}
+
+unsigned int string_dict_copy_complex_if(StringDict* dest, StringDict* src, bool (*condition)
+        (void* enviroment, const char* key, void* val), void* enviroment) {
+    struct copy_env env = { dest, 0, enviroment, {.complex_condition = condition}};
+    string_dict_complex_foreach(src, string_dict_copy_complex_if_internal, &env);
+    return env.counter;
 }
