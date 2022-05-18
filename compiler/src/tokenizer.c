@@ -396,6 +396,7 @@ int try_extract_dot(current_read_data * cr, const char ** src, TokenList * list)
         list->tokens[list->cursor].line_in_file = cr->current_line;
         list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = 1;
+        ++*src;
         return 1;
     }
     return 0;

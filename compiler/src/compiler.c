@@ -89,6 +89,18 @@ void make_warning(const char* line, unsigned int line_no, unsigned int char_no,
     va_end(l);
 }
 
+void print_accessor_str(char* accstr) {
+    int len;
+    for (len = 0; accstr[len] || accstr[len + 1]; len++);
+    char* buffer = malloc(len + 1);
+    for (int i = 0; i < len; i++) {
+        buffer[i] = accstr[i] ? accstr[i] : '.';
+    }
+    buffer[len] = 0;
+    printf("%s", buffer);
+    free(buffer);
+}
+
 void print_tokens(TokenList l) {
     for (unsigned long i = 0; i < l.cursor; i++) {
         if (i) printf(" ");
@@ -222,7 +234,21 @@ void print_single_result_internal(void* enviroment, const char* name, void* val)
     switch (entry->type) {
     case ENTRY_CLASS:;
         layer++;
-        printf("%sclass %s with %d entrys:\n", indent, name, entry->class.class_content->count);
+        printf("%sclass %s", indent, name);
+        if (entry->class.derives_from) {
+            printf(" derives from ");
+            print_accessor_str(entry->class.derives_from);
+        }
+        if (entry->class.implements_len) {
+            printf(" implements ");
+            unsigned int i;
+            for (i = 0; i < entry->class.implements_len - 1; i++) {
+                print_accessor_str(entry->class.implements[i]);
+                printf(", ");
+            }
+            print_accessor_str(entry->class.implements[i]);
+        }
+        printf(" with %d entrys:\n", entry->class.class_content->count);
         string_dict_complex_foreach(entry->class.class_content, print_single_result_internal, &layer);
         break;
     case ENTRY_METHOD:

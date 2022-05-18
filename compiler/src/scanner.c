@@ -28,8 +28,10 @@ Token* get_token(state_data* state) {
 }
 
 char* strmcpy(const char* src) {
-    char* out = malloc(strlen(src) + 1);
+    int len = strlen(src) + 1;
+    char* out = malloc(len + 1);
     strcpy(out, src);
+    out[len] = 0;
     return out;
 }
 
@@ -54,9 +56,6 @@ StackedData* empty_base_entry() {
     entry->type = ENTRY_VARIABLE;
     entry->accessability = PROTECTED;
     entry->class.derives_from = NULL;
-    // entry->class.implements = NULL;
-    // entry->class.implements = 0;
-    // entry->is_static = false;
     return entry;
 }
 
@@ -83,6 +82,17 @@ bool append_method(StringDict* class_content, Token* pos, StackedData* entry_fou
     method_table->method_table.methods = realloc(method_table->method_table.methods, method_table->method_table.len * sizeof(StackedData*));
     method_table->method_table.methods[method_table->method_table.len - 1] = entry_found;
     return true;
+}
+
+// "src\0\0", "append\0" -> "src\0append\0\0"
+char* append_accessor_str(char* src, char* append) {
+    int i;
+    for (i = 0; src[i] || src[i + 1]; i++);
+    int n_len = strlen(append);
+    src = realloc(src, i + n_len + 3);
+    strcpy(src + i + 1, append);
+    src[i + n_len + 2] = 0;
+    return src;
 }
 
 void throw_expected_def(Token* token_with_error) {
@@ -176,8 +186,10 @@ state scan_class_found_class_keyword(state_data* data);
 state scan_class_found_class_name(state_data* data);
 state scan_class_found_derive(state_data* data);
 state scan_class_found_derive_name(state_data* data);
+state scan_class_found_derive_name_dot(state_data* data);
 state scan_class_found_implement(state_data* data);
 state scan_class_found_implement_name(state_data* data);
+state scan_class_found_implement_name_dot(state_data* data);
 state scan_class_found_implement_seperator(state_data* data);
 state scan_class_found_type(state_data* data);
 state scan_class_found_name(state_data* data);
@@ -196,29 +208,29 @@ state scan_class(state_data* data) {
     switch (token->type) {
     case K_PRIVATE_TOKEN:
         data->st_data->accessability = PRIVATE;
-        transition(scan_class_found_accessability, 0);
+        transition(scan_class_found_accessability);
     case K_PROTECTED_TOKEN:
         data->st_data->accessability = PROTECTED;
-        transition(scan_class_found_accessability, 0);
+        transition(scan_class_found_accessability);
     case K_PUBLIC_TOKEN:
         data->st_data->accessability = PUBLIC;
-        transition(scan_class_found_accessability, 0);
+        transition(scan_class_found_accessability);
     case K_STATIC_TOKEN:
         data->st_data->accessability = PROTECTED;
         data->st_data->is_static = true;
-        transition(scan_class_found_static, 0);
+        transition(scan_class_found_static);
     case K_CLASS_TOKEN:
         data->st_data->accessability = PROTECTED;
         data->st_data->is_static = false;
         data->st_data->type = ENTRY_CLASS;
-        transition(scan_class_found_class_keyword, 0);
+        transition(scan_class_found_class_keyword);
     case IDENTIFIER_TOKEN:
         data->st_data->accessability = PROTECTED;
         data->st_data->is_static = false;
         char* type = strmcpy(token->identifier);
         data->st_data->var.type = type;
         data->st_data->method.return_type = type;
-        transition(scan_class_found_type, 0);
+        transition(scan_class_found_type);
     case CLOSE_BLOCK_TOKEN:
         transition(NULL, END_FINE);
     default:
@@ -232,16 +244,16 @@ state scan_class_found_accessability(state_data* data) {
     switch (token->type) {
     case K_STATIC_TOKEN:
         data->st_data->is_static = true;
-        transition(scan_class_found_static, 0);
+        transition(scan_class_found_static);
     case K_CLASS_TOKEN:
         data->st_data->is_static = false;
         data->st_data->type = ENTRY_CLASS;
-        transition(scan_class_found_class_keyword, 0);
+        transition(scan_class_found_class_keyword);
     case IDENTIFIER_TOKEN:
         data->st_data->is_static = false;
         data->st_data->var.type = strmcpy(token->identifier);
         data->st_data->method.return_type = strmcpy(token->identifier);
-        transition(scan_class_found_type, 0);
+        transition(scan_class_found_type);
     default:
         throw_unexpected_token(token);
         transition(NULL, END_ERROR);
@@ -253,11 +265,11 @@ state scan_class_found_static(state_data* data) {
     switch (token->type) {
     case K_CLASS_TOKEN:
         data->st_data->type = ENTRY_CLASS;
-        transition(scan_class_found_class_keyword, 0);
+        transition(scan_class_found_class_keyword);
     case IDENTIFIER_TOKEN:
         data->st_data->var.type = strmcpy(token->identifier);
         data->st_data->method.return_type = strmcpy(token->identifier);
-        transition(scan_class_found_type, 0);
+        transition(scan_class_found_type);
     default:
         throw_unexpected_token(token);
         transition(NULL, END_ERROR);
@@ -271,7 +283,7 @@ state scan_class_found_class_keyword(state_data* data) {
         data->st_data->is_static = true;
         data->st_data->name = strmcpy(token->identifier);
         data->st_data->causing = token;
-        transition(scan_class_found_class_name, 0);
+        transition(scan_class_found_class_name);
     default:
         throw_expected_name(token);
         data->flags = END_ERROR;
@@ -286,7 +298,7 @@ state scan_inner_class(state_data* data) {
     data->st_data->class.class_content = content;
     flush_stacked_data(data);
     data->index--;
-    transition(assert_end_of_class_token, 0);
+    transition(assert_end_of_class_token);
 }
 
 state assert_end_of_class_token(state_data* data) {
@@ -304,10 +316,10 @@ state scan_class_found_class_name(state_data* data) {
     Token* token = get_token(data);
     switch (token->type) {
     case K_DERIVES_TOKEN:
-        transition(scan_class_found_derive, 0);
+        transition(scan_class_found_derive);
     case K_IMPLEMENTS_TOKEN:
         data->st_data->class.derives_from = strmcpy("Object");
-        transition(scan_class_found_implement, 0);
+        transition(scan_class_found_implement);
     case OPEN_BLOCK_TOKEN:;
         return scan_inner_class(data);
     default:
@@ -321,7 +333,7 @@ state scan_class_found_derive(state_data* data) {
     switch (token->type) {
     case IDENTIFIER_TOKEN:
         data->st_data->class.derives_from = strmcpy(token->identifier);
-        transition(scan_class_found_derive_name, 0);
+        transition(scan_class_found_derive_name);
     default:
         throw_expected_name(token);
         transition(NULL, END_ERROR);
@@ -332,11 +344,26 @@ state scan_class_found_derive_name(state_data* data) {
     Token* token = get_token(data);
     switch (token->type) {
     case K_IMPLEMENTS_TOKEN:
-        transition(scan_class_found_implement, 0);
+        transition(scan_class_found_implement);
     case OPEN_BLOCK_TOKEN:
         return scan_inner_class(data);
+    case DOT_TOKEN:
+        transition(scan_class_found_derive_name_dot)
     default:
         throw_unexpected_token(token);
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_class_found_derive_name_dot(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case IDENTIFIER_TOKEN:;
+        char** impl = &data->st_data->class.derives_from;
+        *impl = append_accessor_str(*impl, token->identifier);
+        transition(scan_class_found_implement_name);
+    default:
+        throw_expected_name(token);
         transition(NULL, END_ERROR);
     }
 }
@@ -347,7 +374,7 @@ state scan_class_found_implement(state_data* data) {
     case IDENTIFIER_TOKEN:
         data->st_data->class.implements = realloc(data->st_data->class.implements, data->st_data->class.implements_len++);
         data->st_data->class.implements[data->st_data->class.implements_len - 1] = strmcpy(token->identifier);
-        transition(scan_class_found_implement_name, 0);
+        transition(scan_class_found_implement_name);
     default:
         throw_expected_name(token);
         transition(NULL, END_ERROR);
@@ -358,11 +385,26 @@ state scan_class_found_implement_name(state_data* data) {
     Token* token = get_token(data);
     switch (token->type) {
     case SEPERATOR_TOKEN:
-        transition(scan_class_found_implement, 0);
+        transition(scan_class_found_implement);
     case OPEN_BLOCK_TOKEN:
         return scan_inner_class(data);
+    case DOT_TOKEN:
+        transition(scan_class_found_implement_name_dot);
     default:
         throw_unexpected_token(token);
+        transition(NULL, END_ERROR);
+    }
+}
+
+state scan_class_found_implement_name_dot(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case IDENTIFIER_TOKEN:;
+        char** impl = &data->st_data->class.implements[data->st_data->class.implements_len - 1];
+        *impl = append_accessor_str(*impl, token->identifier);
+        transition(scan_class_found_implement_name);
+    default:
+        throw_expected_name(token);
         transition(NULL, END_ERROR);
     }
 }
@@ -373,7 +415,7 @@ state scan_class_found_type(state_data* data) {
     case IDENTIFIER_TOKEN:
         data->st_data->name = strmcpy(token->identifier);
         data->st_data->causing = token;
-        transition(scan_class_found_name, 0);
+        transition(scan_class_found_name);
     default:
         throw_raw_expected(token, "expected an identifier");
         transition(NULL, END_ERROR);
@@ -387,7 +429,7 @@ state skip(state_data* data) {
             data->st_data = empty_base_entry();
             transition(scan_class, END_FINE);
         case SEPERATOR_TOKEN:
-            transition(scan_class_found_type_no_method, 0);
+            transition(scan_class_found_type_no_method);
         case K_PUBLIC_TOKEN:
         case K_PRIVATE_TOKEN:
         case K_PROTECTED_TOKEN:
@@ -403,19 +445,6 @@ state skip(state_data* data) {
     }
 }
 
-state scan_class_found_name_dot(state_data* data) {
-    Token* token = get_token(data);
-    switch (token->type) {
-    case IDENTIFIER_TOKEN:
-        data->st_data->name = strmcpy(token->identifier);
-        data->st_data->causing = token;
-        transition(scan_class_found_name, 0);
-    default:
-        throw_raw_expected(token, "expected an identifier");
-        transition(NULL, END_ERROR);
-    }
-}
-
 state scan_class_found_name(state_data* data) {
     Token* token = get_token(data);
     switch (token->type) {
@@ -423,25 +452,23 @@ state scan_class_found_name(state_data* data) {
         data->st_data->type = ENTRY_VARIABLE;
         flush_stacked_data(data);
         data->st_data = empty_base_entry();
-        transition(scan_class, 0);
+        transition(scan_class);
     case OPERATOR_TOKEN:
         if (token->operator_type != ASSIGN_OPERATOR) {
             throw_perhaps_missing_assign(token);
             transition(NULL, END_ERROR);
         }
         data->st_data->type = ENTRY_VARIABLE;
-        transition(var_got_assigned, 0);
+        transition(var_got_assigned);
     case OPEN_PARANTHESIS_TOKEN:
         data->st_data->type = ENTRY_METHOD;
-        transition(scan_method_expect_arg_type, 0);
+        transition(scan_method_expect_arg_type);
     case SEPERATOR_TOKEN:;
         StackedData* old = data->st_data;
         flush_stacked_data(data);
         *data->st_data = *old;
         data->st_data->var.type = strmcpy(old->var.type);
-        transition(scan_class_found_type, 0);
-    case DOT_TOKEN:
-        transition(scan_class_found_name_dot);
+        transition(scan_class_found_type);
     default:
         throw_perhaps_missing_assign(token);
         return skip(data);
@@ -454,7 +481,7 @@ state scan_class_found_type_no_method(state_data* data) {
     case IDENTIFIER_TOKEN:
         data->st_data->name = strmcpy(token->identifier);
         data->st_data->causing = token;
-        transition(scan_class_found_name_no_method, 0);
+        transition(scan_class_found_name_no_method);
     default:
         throw_raw_expected(token, "expected an identifier");
         transition(NULL, END_ERROR);
@@ -467,14 +494,14 @@ state scan_class_found_name_no_method(state_data* data) {
     case END_TOKEN:
         data->st_data->type = ENTRY_VARIABLE;
         flush_stacked_data(data);
-        transition(scan_class, 0);
+        transition(scan_class);
     case OPERATOR_TOKEN:
         if (token->operator_type != ASSIGN_OPERATOR) {
             throw_perhaps_missing_assign(token);
             transition(NULL, END_ERROR);
         }
         data->st_data->type = ENTRY_VARIABLE;
-        transition(var_got_assigned, 0);
+        transition(var_got_assigned);
     default:
         throw_perhaps_missing_assign(token);
         transition(NULL, END_ERROR);
@@ -492,13 +519,13 @@ state var_got_assigned(state_data* data) {
     while (true) {
         if (data->index >= data->token_list.cursor) {
             data->index--;
-            transition(scan_class, 0);
+            transition(scan_class);
         }
         Token* token = &data->token_list.tokens[data->index];
         switch (token->type) {
         case END_TOKEN:
             flush_stacked_data(data);
-            if (layer == 0) transition(scan_class, 0);
+            if (layer == 0) transition(scan_class);
             break;
         case OPEN_BLOCK_TOKEN:
             if (type) {
@@ -565,7 +592,7 @@ state var_got_assigned(state_data* data) {
             flush_stacked_data(data);
             *data->st_data = *old_entry;
             data->st_data->var.type = strmcpy(old_entry->var.type);
-            if (layer == 0) transition(scan_class_found_type_no_method, 0);
+            if (layer == 0) transition(scan_class_found_type_no_method);
         default:
             break;
         }
@@ -577,12 +604,12 @@ state scan_method_expect_arg_type(state_data* data) {
     Token* token = get_token(data);
     switch (token->type) {
     case CLOSE_PARANTHESIS_TOKEN:
-        transition(scan_method_args_ended, 0);
+        transition(scan_method_args_ended);
     case IDENTIFIER_TOKEN:
         data->st_data->method.args = realloc(data->st_data->method.args, sizeof(struct argument_s) * (data->st_data->method.arg_count + 1));
         data->st_data->method.args[data->st_data->method.arg_count].name = NULL;
         data->st_data->method.args[data->st_data->method.arg_count].type = strmcpy(token->identifier);
-        transition(scan_method_expect_arg_name, 0);
+        transition(scan_method_expect_arg_name);
     default:
         throw_raw_expected(token, "expected a type");
         transition(NULL, END_ERROR);
@@ -594,7 +621,7 @@ state scan_method_expect_arg_name(state_data* data) {
     switch (token->type) {
     case IDENTIFIER_TOKEN:
         data->st_data->method.args[data->st_data->method.arg_count++].name = strmcpy(token->identifier);
-        transition(scan_method_found_arg, 0);
+        transition(scan_method_found_arg);
     default:
         throw_raw_expected(token, "expected an identifier");
         transition(NULL, END_ERROR);
@@ -605,9 +632,9 @@ state scan_method_found_arg(state_data* data) {
     Token* token = get_token(data);
     switch (token->type) {
     case SEPERATOR_TOKEN:
-        transition(scan_method_expect_arg_type, 0);
+        transition(scan_method_expect_arg_type);
     case CLOSE_PARANTHESIS_TOKEN:
-        transition(scan_method_args_ended, 0);
+        transition(scan_method_args_ended);
     default:
         throw_raw_expected(token, "expected \"{\"");
         transition(NULL, END_ERROR);
@@ -619,7 +646,7 @@ state scan_method_args_ended(state_data* data) {
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
         data->st_data->text = data->index;
-        transition(scan_method_body, 0);
+        transition(scan_method_body);
     default:
         throw_raw_expected(token, "expected \"{\"");
         transition(NULL, END_ERROR);
@@ -631,20 +658,20 @@ state scan_method_body(state_data* data) {
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
         data->depth++;
-        transition(scan_method_body, 0);
+        transition(scan_method_body);
     case CLOSE_BLOCK_TOKEN:
         if (data->depth > 0) {
             data->depth--;
-            transition(scan_method_body, 0);
+            transition(scan_method_body);
         }
         else {
             data->depth = 0;
             append_method(data->dest, token, data->st_data, data->st_data->name);
             data->st_data = empty_base_entry();
-            transition(scan_class, 0);
+            transition(scan_class);
         }
     default:
-        transition(scan_method_body, 0);
+        transition(scan_method_body);
     }
 }
 

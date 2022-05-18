@@ -1,4 +1,4 @@
-class ExampleClass derives AnOtherExampleClass {
+class ExampleClass derives example.AnOtherExampleClass {
     int var, num = (5), other_var;
     int subtract (int a, int b) {
 
