@@ -38,9 +38,9 @@ typedef struct Token {
     unsigned int char_in_line;
     unsigned int line_in_file;
     unsigned int text_len;
-    const char * line_content;
+    const char* line_content;
     union {
-        char * identifier;
+        char* identifier;
         struct {
             FixedDataType type;
             union {
@@ -56,9 +56,50 @@ typedef struct Token {
 } Token;
 
 typedef struct TokenList {
-    Token * tokens;
+    Token* tokens;
     unsigned int cursor;
 } TokenList;
+
+typedef enum ExecuteTreeType {
+    EXEC_OPERATE, EXEC_VALUE, EXEC_VARIABLE, EXEC_CALL,
+    EXEC_ARGUMENT, EXEC_RETURN, EXEC_IF,
+    EXEC_FOR, EXEC_WHILE
+} ExecuteTreeType;
+
+typedef struct Text {
+    ExecuteTreeType type;
+    union {
+        struct {
+            BasicOperator type;
+            Text* values[2];
+        } operate;
+        union {
+            int8_t ibyte;
+            int16_t ishort;
+            int32_t iint;
+            int64_t ilong;
+            char* string;
+        } value;
+        StackedData* variable;
+        StackedData* call;
+        Text* argument;
+        Text* exp_return;
+        struct {
+            Text* condition;
+            Text* on_true;
+            Text* on_false;
+        } exp_if;
+        struct {
+            Text* begin;
+            Text* condition;
+            Text* text;
+        } exp_for;
+        struct {
+            Text* condition;
+            Text* text;
+        } exp_for;
+    };
+} Text;
 
 void set_enviroment(const char* enviroment);
 
@@ -69,5 +110,8 @@ void make_warning(const char* line, unsigned int line_no, unsigned int char_no,
         unsigned int len, const char * warning_message, ...);
 
 void free_scan_result(const char* key, void* val);
+
+// src\0src\0\0 -> StackedData
+StackedData* get_from_ident_dot_seq(StringDict* src, const char* name, TokenList* tokens, int token_index);
 
 #endif

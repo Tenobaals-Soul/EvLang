@@ -46,7 +46,7 @@ void message_internal(const char* color_code, const char* line, unsigned int lin
             print_len += isprint(line[i]) ? 1 : 0;
         }
     }
-    printf("\e[0m");
+    printf("\033[0m");
     for (; line[i] && line[i] != '\n'; i++) {
         if (!iscntrl(line[i])) {
             putchar(line[i]);
@@ -65,8 +65,33 @@ void message_internal(const char* color_code, const char* line, unsigned int lin
         for (unsigned int i = char_no; i < print_len; i++) {
             putchar('^');
         }
-        printf("\e[0m\n");
+        printf("\033[0m\n");
     }
+}
+
+StackedData* get_from_ident_dot_seq(StringDict* src, const char* name, TokenList* tokens, int token_index) {
+    char* env = enviroment;
+    char* acs = name;
+    StackedData* found;
+    for (int i = 0; name[i + 1]; i++) {
+        found = string_dict_get(src, acs);
+        if (found == NULL) {
+            if (name == NULL) {
+                Token* t = &tokens->tokens[token_index];
+                make_error(t->line_content, t->line_in_file, t->char_in_line,
+                    t->text_len, "%s has no members", env, name + i);
+            }
+            else {
+                Token* t = &tokens->tokens[token_index];
+                make_error(t->line_content, t->line_in_file, t->char_in_line,
+                    t->text_len, "%s has no member %s", env, name + i);
+            }
+        }
+        env = name;
+        for (acs = name + i; acs[i]; i++);
+        src = found->type == ENTRY_CLASS ? found->class.class_content : NULL;
+    }
+    return found;
 }
 
 void make_error(const char* line, unsigned int line_no, unsigned int char_no, 
@@ -101,6 +126,24 @@ void print_accessor_str(char* accstr) {
     free(buffer);
 }
 
+void compile_text(const char* key, void* val) {
+    StackedData* entry = val;
+    if (entry->type == ENTRY_CLASS) {
+        string_dict_foreach(entry->class.class_content, compile_text);
+    }
+    else if (entry->type == ENTRY_METHOD_TABLE) {
+        for (unsigned int i = 0; i < entry->method_table.len; i++) {
+            compile_text(key, entry->method_table.methods[i]);
+        }
+    }
+    else if (entry->type == ENTRY_METHOD) {
+        compile_method(key, entry);
+    }
+    else if (entry->type == ENTRY_VARIABLE) {
+        compile_statement(entry->text);
+    }
+}
+
 void print_tokens(TokenList l) {
     for (unsigned long i = 0; i < l.cursor; i++) {
         if (i) printf(" ");
@@ -109,68 +152,68 @@ void print_tokens(TokenList l) {
             printf(";");
             break;
         case K_CLASS_TOKEN:
-            printf("\e[94m%s\e[0m", "class");
+            printf("\033[94m%s\033[0m", "class");
             break; 
         case K_PRIVATE_TOKEN:
-            printf("\e[94m%s\e[0m", "private");
+            printf("\033[94m%s\033[0m", "private");
             break; 
         case K_PROTECTED_TOKEN:
-            printf("\e[94m%s\e[0m", "protected");
+            printf("\033[94m%s\033[0m", "protected");
             break; 
         case K_PUBLIC_TOKEN:
-            printf("\e[94m%s\e[0m", "public");
+            printf("\033[94m%s\033[0m", "public");
             break; 
         case K_DERIVES_TOKEN:
-            printf("\e[94m%s\e[0m", "derives");
+            printf("\033[94m%s\033[0m", "derives");
             break;
         case K_IMPLEMENTS_TOKEN:
-            printf("\e[94m%s\e[0m", "implements");
+            printf("\033[94m%s\033[0m", "implements");
             break;
         case K_STATIC_TOKEN:
-            printf("\e[94m%s\e[0m", "static");
+            printf("\033[94m%s\033[0m", "static");
             break;
         case C_BREAK_TOKEN:
-            printf("\e[94m%s\e[0m", "break");
+            printf("\033[94m%s\033[0m", "break");
             break;
         case C_CASE_TOKEN:
-            printf("\e[94m%s\e[0m", "case");
+            printf("\033[94m%s\033[0m", "case");
             break;
         case C_DEFAULT_TOKEN:
-            printf("\e[94m%s\e[0m", "default");
+            printf("\033[94m%s\033[0m", "default");
             break;
         case C_FOR_TOKEN:
-            printf("\e[94m%s\e[0m", "for");
+            printf("\033[94m%s\033[0m", "for");
             break;
         case C_IF_TOKEN:
-            printf("\e[94m%s\e[0m", "if");
+            printf("\033[94m%s\033[0m", "if");
             break;
         case C_RETURN_TOKEN:
-            printf("\e[94m%s\e[0m", "return");
+            printf("\033[94m%s\033[0m", "return");
             break;
         case C_SWITCH_TOKEN:
-            printf("\e[94m%s\e[0m", "switch");
+            printf("\033[94m%s\033[0m", "switch");
             break;
         case C_WHILE_TOKEN:
-            printf("\e[94m%s\e[0m", "while");
+            printf("\033[94m%s\033[0m", "while");
             break;
         case IDENTIFIER_TOKEN:
             printf("%s", l.tokens[i].identifier);
             break;
         case FIXED_VALUE_TOKEN:
             if (l.tokens[i].fixed_value.type == STRING) {
-                printf("\e[32m\"%s\"\e[0m", l.tokens[i].fixed_value.value.string);
+                printf("\033[32m\"%s\"\033[0m", l.tokens[i].fixed_value.value.string);
             }
             else if (l.tokens[i].fixed_value.type == CHARACTER) {
-                printf("\e[32m\'%s\'\e[0m", l.tokens[i].fixed_value.value.string);
+                printf("\033[32m\'%s\'\033[0m", l.tokens[i].fixed_value.value.string);
             }
             else if (l.tokens[i].fixed_value.type == INTEGER) {
-                printf("\e[32m%llu\e[0m", (unsigned long long int) l.tokens[i].fixed_value.value.integer);
+                printf("\033[32m%llu\033[0m", (unsigned long long int) l.tokens[i].fixed_value.value.integer);
             }
             else if (l.tokens[i].fixed_value.type == FLOATING) {
-                printf("\e[32m%Lf\e[0m", l.tokens[i].fixed_value.value.floating);
+                printf("\033[32m%Lf\033[0m", l.tokens[i].fixed_value.value.floating);
             }
             else if (l.tokens[i].fixed_value.type == BOOLEAN) {
-                printf("\e[32m%s\e[0m", l.tokens->fixed_value.value.boolean ? "true" : "false");
+                printf("\033[32m%s\033[0m", l.tokens->fixed_value.value.boolean ? "true" : "false");
             }
             else {
                 printf("detected fatal internal error - error type detected - %d\n", __LINE__);
@@ -344,32 +387,40 @@ void free_scan_result(const char* key, void* val) {
     free(val);
 }
 
+char* fmalloc(const char* filename) {
+    int fd = open(filename, O_RDONLY);
+    if (fd == -1) return NULL;
+    off_t len = lseek(fd, 0, SEEK_END);
+    lseek(fd, 0, SEEK_SET);
+    char* file_content = malloc(len + 1);
+    if (file_content == NULL) return NULL;
+    read(fd, file_content, len);
+    close(fd);
+    file_content[len] = 0;
+    return file_content;
+}
+
 int main(int argc, char** argv) {
+    bool exit_err = false;
     for (int i = 1; i < argc; i++) {
         if (access(argv[i], R_OK)) {
             printf("file \"%s\" could not be found\n", argv[i]);
-            exit(0);
+            exit_err = true;
         }
     }
+    if (exit_err) exit(0);
     StringDict general_identifier_dict;
     string_dict_init(&general_identifier_dict);
     char* file_contents[argc - 1];
     for (int i = 1; i < argc; i++) {
         if (string_dict_get(&general_identifier_dict, argv[i])) continue;
-        int fd = open(argv[i], O_RDONLY);
-        set_enviroment(argv[i]);
-        if (fd == -1) {
+        char* file_content = fmalloc(argv[i]);
+        if (!file_content) {
             printf("could not open file \"%s\"", argv[i]);
             exit(1);
         }
-        off_t len = lseek(fd, 0, SEEK_END);
-        lseek(fd, 0, SEEK_SET);
-        char* file_content = malloc(len + 1);
-        read(fd, file_content, len);
-        close(fd);
-        file_content[len] = 0;
-        TokenList token_list;
-        token_list = lex(file_content);
+        set_enviroment(argv[i]);
+        TokenList token_list = lex(file_content);
         if (token_list.tokens == NULL) continue;
         file_contents[i - 1] = file_content;
         print_tokens(token_list);
@@ -381,6 +432,7 @@ int main(int argc, char** argv) {
         }
         free_tokens(token_list);
     }
+    string_dict_foreach(&general_identifier_dict, compile_text);
     for (int i = 0; i < argc - 1; i++) {
         free(file_contents[i]);
     }
