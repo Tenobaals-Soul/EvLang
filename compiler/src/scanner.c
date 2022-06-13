@@ -505,7 +505,7 @@ char inverse_bracket(char bracket) {
 }
 
 state var_got_assigned(state_data* data) {
-    data->st_data->text = data->index;
+    data->st_data->var.text_start = data->index;
     int layer = 0;
     char type = 0;
     while (true) {
@@ -516,6 +516,7 @@ state var_got_assigned(state_data* data) {
         Token* token = &data->token_list.tokens[data->index];
         switch (token->type) {
         case END_TOKEN:
+            data->st_data->var.text_end = data->index;
             flush_stacked_data(data);
             if (layer == 0) transition(scan_class);
             break;
@@ -637,7 +638,6 @@ state scan_method_args_ended(state_data* data) {
     Token* token = get_token(data);
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
-        data->st_data->text = data->index;
         transition(scan_method_body);
     default:
         throw_raw_expected(token, "expected \"{\"");
@@ -646,6 +646,7 @@ state scan_method_args_ended(state_data* data) {
 }
 
 state scan_method_body(state_data* data) {
+    data->st_data->method.text_start = data->index;
     Token* token = get_token(data);
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
@@ -660,6 +661,7 @@ state scan_method_body(state_data* data) {
             data->depth = 0;
             append_method(data->dest, token, data->st_data, data->st_data->name);
             data->st_data = empty_base_entry();
+            data->st_data->method.text_end = data->index;
             transition(scan_class);
         }
     default:

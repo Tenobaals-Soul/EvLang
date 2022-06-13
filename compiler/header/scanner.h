@@ -77,10 +77,12 @@ struct StackedData {
     Accessability accessability;
     bool is_static;
     Token* causing;
-    unsigned int text;
     struct {
         char* type;
         Expression* exec_text;
+        bool was_initialized;
+        unsigned int text_start;
+        unsigned int text_end;
     } var;
     struct {
         StringDict* class_content;
@@ -97,6 +99,8 @@ struct StackedData {
         }* args;
         unsigned int arg_count;
         Statement** exec_text;
+        unsigned int text_start;
+        unsigned int text_end;
     } method;
     struct {
         char* return_type;

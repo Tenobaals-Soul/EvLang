@@ -249,6 +249,9 @@ void print_tokens(TokenList l) {
         case DOT_TOKEN:
             printf(".");
             break;
+        case ASSIGN_TOKEN:
+            printf("=");
+            break;
         default:
             printf("detected fatal internal error - error type detected - %d\n", __LINE__);
             exit(1);

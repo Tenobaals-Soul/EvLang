@@ -343,8 +343,8 @@ static int try_extract_operator(current_read_data * cr, const char ** src, Token
     return 0;
 }
 
-static int try_extract_assign(current_read_data * cr, const char ** src, TokenList * list) {
-    if (src[0] == "=") {
+static int try_extract_assign(current_read_data* cr, const char** src, TokenList* list) {
+    if (**src == '=') {
         list->tokens[list->cursor].type = ASSIGN_TOKEN;
         list->tokens[list->cursor].char_in_line = cr->current_char;
         list->tokens[list->cursor].line_in_file = cr->current_line;
@@ -357,7 +357,7 @@ static int try_extract_assign(current_read_data * cr, const char ** src, TokenLi
     return 0;
 }
 
-static int try_extract_any_paranthesis(current_read_data * cr, const char ** src, TokenList * list) {
+static int try_extract_any_paranthesis(current_read_data* cr, const char** src, TokenList* list) {
     switch (**src) {
     case '(':
         list->tokens[list->cursor].type = OPEN_PARANTHESIS_TOKEN;
