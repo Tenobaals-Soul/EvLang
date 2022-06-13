@@ -1,5 +1,5 @@
 class ExampleClass derives example.AnOtherExampleClass {
-    int var, num = (5), other_var;
+    int var, num = 5 * (5 + 3), other_var = 5 * 7 / 2;
     int subtract (int a, int b) {
 
     }

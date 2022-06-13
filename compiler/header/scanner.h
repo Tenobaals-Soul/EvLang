@@ -20,19 +20,21 @@ typedef struct Function Function;
 struct Expression {
     enum ExpressionType {
         EXPRESSION_CALL, EXPRESSION_OPERATOR,
-        EXPRESSION_UNARY_OPERATOR, EXPRESSION_FIXED_VALUE
+        EXPRESSION_UNARY_OPERATOR, EXPRESSION_FIXED_VALUE,
+        EXPRESSION_OPEN_PARANTHESIS_GUARD, EXPRESSION_VAR
     } expression_type;
     union {
         StackedData* variable;
-        StackedData* fixed_value;
+        Token* fixed_value;
         struct {
             Expression* left;
             Expression* right;
-        } statement_operator;
+            BasicOperator operator;
+        } expression_operator;
         struct {
             StackedData* call;
-            Statement** args;
-        } statement_call;
+            Expression** args;
+        } expression_call;
     };
 };
 
@@ -65,24 +67,25 @@ struct Statement {
         struct {
             Function* call;
             Statement** args;
-        } statement_call;
+        } expression_call;
     };
 };
 
 struct StackedData {
     EntryType type;
+    TokenList env_token;
     char* name;
     char* path;
     unsigned int line_no;
     Accessability accessability;
     bool is_static;
     Token* causing;
+    unsigned int text_start;
+    unsigned int text_end;
     struct {
         char* type;
         Expression* exec_text;
         bool was_initialized;
-        unsigned int text_start;
-        unsigned int text_end;
     } var;
     struct {
         StringDict* class_content;
@@ -99,8 +102,6 @@ struct StackedData {
         }* args;
         unsigned int arg_count;
         Statement** exec_text;
-        unsigned int text_start;
-        unsigned int text_end;
     } method;
     struct {
         char* return_type;

@@ -1,17 +1,18 @@
-#include<string_dict.h>
-#include<tokenizer.h>
-#include<scanner.h>
-#include<stdarg.h>
-#include<stdio.h>
-#include<stdlib.h>
-#include<fcntl.h>
-#include<unistd.h>
-#include<string.h>
-#include<ctype.h>
+#include <string_dict.h>
+#include <tokenizer.h>
+#include <scanner.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+#include <ctype.h>
+#include <parser.h>
 
 static char enviroment[256] = "unspecified enviroment";
 
-void set_enviroment(const char* new_enviroment) {
+void set_enviroment(const char *new_enviroment) {
     if (strlen(new_enviroment) > 255) {
         strncpy(enviroment, new_enviroment, 252);
         strcat(enviroment, "...");
@@ -21,8 +22,8 @@ void set_enviroment(const char* new_enviroment) {
     }
 }
 
-void message_internal(const char* color_code, const char* line, unsigned int line_no,
-        unsigned int char_no, unsigned int len, const char* message, ...) {
+void message_internal(const char *color_code, const char *line, unsigned int line_no,
+                      unsigned int char_no, unsigned int len, const char *message, ...) {
     char_no++;
     printf("%s %u:%u ", enviroment, line_no, char_no);
     va_list l;
@@ -69,33 +70,34 @@ void message_internal(const char* color_code, const char* line, unsigned int lin
     }
 }
 
-StackedData* get_from_ident_dot_seq(StringDict* src, const char* name, TokenList* tokens, int token_index) {
-    const char* env = enviroment;
-    const char* acs = name;
-    StackedData* found;
+StackedData *get_from_ident_dot_seq(StringDict *src, const char *name, TokenList *tokens, int token_index) {
+    const char *env = enviroment;
+    const char *acs = name;
+    StackedData *found;
     for (int i = 0; name[i + 1]; i++) {
         found = string_dict_get(src, acs);
         if (found == NULL) {
             if (name == NULL) {
-                Token* t = &tokens->tokens[token_index];
+                Token *t = &tokens->tokens[token_index];
                 make_error(t->line_content, t->line_in_file, t->char_in_line,
-                    t->text_len, "%s has no members", env, name + i);
+                           t->text_len, "%s has no members", env, name + i);
             }
             else {
-                Token* t = &tokens->tokens[token_index];
+                Token *t = &tokens->tokens[token_index];
                 make_error(t->line_content, t->line_in_file, t->char_in_line,
-                    t->text_len, "%s has no member %s", env, name + i);
+                           t->text_len, "%s has no member %s", env, name + i);
             }
         }
         env = name;
-        for (acs = name + i; acs[i]; i++);
+        for (acs = name + i; acs[i]; i++)
+            ;
         src = found->type == ENTRY_CLASS ? found->class.class_content : NULL;
     }
     return found;
 }
 
-void make_error(const char* line, unsigned int line_no, unsigned int char_no, 
-        unsigned int len, const char* error_message, ...) {
+void make_error(const char *line, unsigned int line_no, unsigned int char_no,
+                unsigned int len, const char *error_message, ...) {
     printf("%s %u:%u ", enviroment, line_no, char_no);
     char_no--;
     va_list l;
@@ -104,8 +106,8 @@ void make_error(const char* line, unsigned int line_no, unsigned int char_no,
     va_end(l);
 }
 
-void make_warning(const char* line, unsigned int line_no, unsigned int char_no, 
-        unsigned int len, const char * warning_message, ...) {
+void make_warning(const char *line, unsigned int line_no, unsigned int char_no,
+                  unsigned int len, const char *warning_message, ...) {
     printf("%s %u:%u ", enviroment, line_no, char_no);
     char_no--;
     va_list l;
@@ -114,10 +116,24 @@ void make_warning(const char* line, unsigned int line_no, unsigned int char_no,
     va_end(l);
 }
 
-void print_accessor_str(char* accstr) {
+// "src\0\0", "append\0" -> "src\0append\0\0"
+char *append_accessor_str(char *src, char *append) {
+    int i = 0;
+    if (src)
+        for (; src[i] || src[i + 1]; i++)
+            ;
+    int n_len = strlen(append);
+    src = realloc(src, i + n_len + 3);
+    strcpy(src + i + 1, append);
+    src[i + n_len + 2] = 0;
+    return src;
+}
+
+void print_accessor_str(char *accstr) {
     int len;
-    for (len = 0; accstr[len] || accstr[len + 1]; len++);
-    char* buffer = malloc(len + 1);
+    for (len = 0; accstr[len] || accstr[len + 1]; len++)
+        ;
+    char *buffer = malloc(len + 1);
     for (int i = 0; i < len; i++) {
         buffer[i] = accstr[i] ? accstr[i] : '.';
     }
@@ -126,45 +142,93 @@ void print_accessor_str(char* accstr) {
     free(buffer);
 }
 
-void compile_text(const char* key, void* val) {
-    /*
-    StackedData* entry = val;
-    if (entry->type == ENTRY_CLASS) {
-        string_dict_foreach(entry->class.class_content, compile_text);
+void print_fixed_value(Token *data) {
+    switch (data->fixed_value.type) {
+    case STRING:
+        printf("\033[32m\"%s\"\033[0m", data->fixed_value.value.string);
+        break;
+    case CHARACTER:
+        printf("\033[32m\'%s\'\033[0m", data->fixed_value.value.string);
+        break;
+    case INTEGER:
+        printf("\033[32m%llu\033[0m", (unsigned long long int)data->fixed_value.value.integer);
+        break;
+    case FLOATING:
+        printf("\033[32m%Lf\033[0m", data->fixed_value.value.floating);
+        break;
+    case BOOLEAN:
+        printf("\033[32m%s\033[0m", data->fixed_value.value.boolean ? "true" : "false");
+        break;
+    default:
+        printf("detected fatal internal error - error type detected - %d\n", __LINE__);
+        exit(1);
     }
-    else if (entry->type == ENTRY_METHOD_TABLE) {
-        for (unsigned int i = 0; i < entry->method_table.len; i++) {
-            compile_text(key, entry->method_table.methods[i]);
-        }
+}
+
+void print_operator(BasicOperator operator) {
+    switch (operator) {
+    case ADD_OPERATOR:
+        printf("+");
+        break;
+    case SUBTRACT_OPERATOR:
+        printf("-");
+        break;
+    case MULTIPLY_OPERATOR:
+        printf("*");
+        break;
+    case DIVIDE_OPERATOR:
+        printf("/");
+        break;
+    case RIGHT_SHIFT_OPERATOR:
+        printf(">>");
+        break;
+    case LEFT_SHIFT_OPERATOR:
+        printf("<<");
+        break;
+    case EQUALS_OPERATOR:
+        printf("==");
+        break;
+    case SMALLER_THAN_OPERATOR:
+        printf("<");
+        break;
+    case SMALLER_EQUAL_OPERATOR:
+        printf("<=");
+        break;
+    case GREATER_THAN_OPERATOR:
+        printf(">");
+        break;
+    case GREATER_EQUAL_OPERATOR:
+        printf(">=");
+        break;
+    case NOT_EQUAL_OPERATOR:
+        printf("!=");
+        break;
+    default:
+        printf("detected fatal internal error - error type detected - %d\n", __LINE__);
+        exit(1);
     }
-    else if (entry->type == ENTRY_METHOD) {
-        compile_method(key, entry);
-    }
-    else if (entry->type == ENTRY_VARIABLE) {
-        compile_statement(entry->text);
-    }
-    */
 }
 
 void print_tokens(TokenList l) {
     for (unsigned long i = 0; i < l.cursor; i++) {
-        if (i) printf(" ");
+        if (i)
+            printf(" ");
         switch (l.tokens[i].type) {
         case END_TOKEN:
             printf(";");
             break;
         case K_CLASS_TOKEN:
             printf("\033[94m%s\033[0m", "class");
-            break; 
+            break;
         case K_PRIVATE_TOKEN:
             printf("\033[94m%s\033[0m", "private");
-            break; 
+            break;
         case K_PROTECTED_TOKEN:
             printf("\033[94m%s\033[0m", "protected");
-            break; 
+            break;
         case K_PUBLIC_TOKEN:
             printf("\033[94m%s\033[0m", "public");
-            break; 
+            break;
         case K_DERIVES_TOKEN:
             printf("\033[94m%s\033[0m", "derives");
             break;
@@ -202,25 +266,7 @@ void print_tokens(TokenList l) {
             printf("%s", l.tokens[i].identifier);
             break;
         case FIXED_VALUE_TOKEN:
-            if (l.tokens[i].fixed_value.type == STRING) {
-                printf("\033[32m\"%s\"\033[0m", l.tokens[i].fixed_value.value.string);
-            }
-            else if (l.tokens[i].fixed_value.type == CHARACTER) {
-                printf("\033[32m\'%s\'\033[0m", l.tokens[i].fixed_value.value.string);
-            }
-            else if (l.tokens[i].fixed_value.type == INTEGER) {
-                printf("\033[32m%llu\033[0m", (unsigned long long int) l.tokens[i].fixed_value.value.integer);
-            }
-            else if (l.tokens[i].fixed_value.type == FLOATING) {
-                printf("\033[32m%Lf\033[0m", l.tokens[i].fixed_value.value.floating);
-            }
-            else if (l.tokens[i].fixed_value.type == BOOLEAN) {
-                printf("\033[32m%s\033[0m", l.tokens->fixed_value.value.boolean ? "true" : "false");
-            }
-            else {
-                printf("detected fatal internal error - error type detected - %d\n", __LINE__);
-                exit(1);
-            }
+            print_fixed_value(&l.tokens[i]);
             break;
         case OPERATOR_TOKEN:
             printf("<op>");
@@ -262,7 +308,7 @@ void print_tokens(TokenList l) {
 
 void free_tokens(TokenList token_list) {
     for (unsigned long j = 0; j < token_list.cursor; j++) {
-        Token * t = token_list.tokens + j;
+        Token *t = token_list.tokens + j;
         if (t->type == IDENTIFIER_TOKEN) {
             free(t->identifier);
         }
@@ -273,12 +319,100 @@ void free_tokens(TokenList token_list) {
     free(token_list.tokens);
 }
 
-void print_single_result_internal(void* enviroment, const char* name, void* val) {
-    int layer = *((int*) enviroment);
+void print_exec_text_internal2(Expression *exp) {
+    switch (exp->expression_type) {
+    case EXPRESSION_CALL:
+        printf("%s(", exp->expression_call.call->name);
+        unsigned int i;
+        for (i = 0; exp->expression_call.args[i]; i++) {
+            print_exec_text_internal2(exp->expression_call.args[i]);
+        }
+        if (exp->expression_call.args[i]) {
+            print_exec_text_internal2(exp->expression_call.args[i]);
+        }
+        printf(")");
+    case EXPRESSION_FIXED_VALUE:
+        print_fixed_value(exp->fixed_value);
+        break;
+    case EXPRESSION_OPEN_PARANTHESIS_GUARD:
+        printf("detected fatal internal error - error type detected - %d\n", __LINE__);
+    case EXPRESSION_OPERATOR:
+        printf("(");
+        print_exec_text_internal2(exp->expression_operator.left);
+        printf(") ");
+        print_operator(exp->expression_operator.operator);
+        printf(" (");
+        print_exec_text_internal2(exp->expression_operator.right);
+        printf(")");
+    }
+}
+
+void print_exec_text_internal(void *env, const char *name, void *val) {
+    int layer = *((int *) env);
     char indent[layer * 4 + 1];
     memset(indent, ' ', layer * 4);
     indent[layer * 4] = 0;
-    StackedData* entry = val;
+    StackedData *entry = val;
+    switch (entry->type) {
+    case ENTRY_CLASS:;
+        printf("%sclass %s with %d entrys:\n", indent, entry->name, entry->class.class_content->count);
+        layer++;
+        string_dict_complex_foreach(entry->class.class_content, print_exec_text_internal, &layer);
+    case ENTRY_METHOD:
+        printf("%s%s %s(", indent, entry->method.return_type, name);
+        unsigned int i;
+        if (entry->method.arg_count) {
+            for (i = 0; i < entry->method.arg_count - 1; i++) {
+                printf("%s %s, ", entry->method.args[i].type, entry->method.args[i].name);
+            }
+            printf("%s %s", entry->method.args[i].type, entry->method.args[i].name);
+        }
+        printf(") with code: NONE\n");
+        break;
+    case ENTRY_METHOD_TABLE:
+        printf("%smethod %s with %d overloaded variant(s):\n", indent, name, entry->method_table.len);
+        layer++;
+        for (unsigned int i = 0; i < entry->method_table.len; i++) {
+            print_exec_text_internal(&layer, name, entry->method_table.methods[i]);
+        }
+        break;
+    case ENTRY_VARIABLE:
+        printf("%s%s %s = ", indent, entry->var.type, name);
+        if (entry->var.exec_text) {
+            print_exec_text_internal2(entry->var.exec_text);
+        }
+        else {
+            printf("NONE");
+        }
+        printf("\n");
+        break;
+    case ENTRY_ERROR:
+        make_error(entry->causing->line_content, entry->causing->line_in_file, entry->causing->char_in_line,
+                   entry->causing->text_len, entry->name);
+        break;
+    case ERROR_TYPE:
+        printf("detected fatal internal error - error type detected - %d\n", __LINE__);
+        exit(1);
+        break;
+    }
+}
+
+void print_exec_text_wrap(const char* key, void* val) {
+    int layer = 1;
+    printf("module %s with %d entrys:\n", key, ((StringDict*) val)->count);
+    string_dict_complex_foreach(val, print_exec_text_internal, &layer);
+}
+
+void print_exec_text(StringDict *dict) {
+    string_dict_foreach(dict, print_exec_text_wrap);
+}
+
+void print_single_result_internal(void *enviroment, const char *name, void *val) {
+    int layer = *((int *)enviroment);
+    char indent[layer * 4 + 1];
+    memset(indent, ' ', layer * 4);
+    indent[layer * 4] = 0;
+    StackedData *entry = val;
     switch (entry->type) {
     case ENTRY_CLASS:;
         layer++;
@@ -302,10 +436,10 @@ void print_single_result_internal(void* enviroment, const char* name, void* val)
     case ENTRY_METHOD:
         printf("%s%s %s(", indent, entry->method.return_type, name);
         unsigned int i;
-        for (i = 0; i < entry->method.arg_count - 1; i++) {
-            printf("%s %s, ", entry->method.args[i].type, entry->method.args[i].name);
-        }
         if (entry->method.arg_count) {
+            for (i = 0; i < entry->method.arg_count - 1; i++) {
+                printf("%s %s, ", entry->method.args[i].type, entry->method.args[i].name);
+            }
             printf("%s %s", entry->method.args[i].type, entry->method.args[i].name);
         }
         printf(")\n");
@@ -322,7 +456,7 @@ void print_single_result_internal(void* enviroment, const char* name, void* val)
         break;
     case ENTRY_ERROR:
         make_error(entry->causing->line_content, entry->causing->line_in_file, entry->causing->char_in_line,
-            entry->causing->text_len, entry->name);
+                   entry->causing->text_len, entry->name);
         break;
     case ERROR_TYPE:
         printf("detected fatal internal error - error type detected - %d\n", __LINE__);
@@ -331,18 +465,18 @@ void print_single_result_internal(void* enviroment, const char* name, void* val)
     }
 }
 
-void print_single_result(const char* key, void* val) {
-    StackedData* entry = val;
+void print_single_result(const char *key, void *val) {
+    StackedData *entry = val;
     int env = 0;
     print_single_result_internal(&env, key, entry);
 }
 
-void print_scan_result(StringDict* content) {
+void print_scan_result(StringDict *content) {
     string_dict_foreach(content, print_single_result);
 }
 
-void free_single_scan_result(const char* key, void* val) {
-    StackedData* entry = val;
+void free_single_scan_result(const char *key, void *val) {
+    StackedData *entry = val;
     switch (entry->type) {
     case ENTRY_CLASS:
         free(entry->name);
@@ -351,8 +485,10 @@ void free_single_scan_result(const char* key, void* val) {
         for (unsigned int i = 0; i < entry->class.implements_len; i++) {
             free(entry->class.implements[i]);
         }
-        if (entry->class.implements) free(entry->class.implements);
-        if (entry->class.derives_from) free(entry->class.derives_from);
+        if (entry->class.implements)
+            free(entry->class.implements);
+        if (entry->class.derives_from)
+            free(entry->class.derives_from);
         free(entry->class.class_content);
         break;
     case ENTRY_METHOD:
@@ -385,20 +521,22 @@ void free_single_scan_result(const char* key, void* val) {
     free(entry);
 }
 
-void free_scan_result(const char* key, void* val) {
-    (void) key;
+void free_scan_result(const char *key, void *val) {
+    (void)key;
     string_dict_foreach(val, free_single_scan_result);
     string_dict_destroy(val);
     free(val);
 }
 
-char* fmalloc(const char* filename) {
+char *fmalloc(const char *filename) {
     int fd = open(filename, O_RDONLY);
-    if (fd == -1) return NULL;
+    if (fd == -1)
+        return NULL;
     off_t len = lseek(fd, 0, SEEK_END);
     lseek(fd, 0, SEEK_SET);
-    char* file_content = malloc(len + 1);
-    if (file_content == NULL) return NULL;
+    char *file_content = malloc(len + 1);
+    if (file_content == NULL)
+        return NULL;
     ssize_t r = read(fd, file_content, len);
     if (r < 0) {
         free(file_content);
@@ -409,7 +547,7 @@ char* fmalloc(const char* filename) {
     return file_content;
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     bool exit_err = false;
     for (int i = 1; i < argc; i++) {
         if (access(argv[i], R_OK)) {
@@ -417,32 +555,40 @@ int main(int argc, char** argv) {
             exit_err = true;
         }
     }
-    if (exit_err) exit(0);
+    if (exit_err)
+        exit(0);
     StringDict general_identifier_dict;
     string_dict_init(&general_identifier_dict);
-    char* file_contents[argc - 1];
+    char *file_contents[argc - 1];
+    TokenList *token_lists = malloc(sizeof(TokenList) * (argc - 1));
     for (int i = 1; i < argc; i++) {
-        if (string_dict_get(&general_identifier_dict, argv[i])) continue;
-        char* file_content = fmalloc(argv[i]);
+        if (string_dict_get(&general_identifier_dict, argv[i]))
+            continue;
+        char *file_content = fmalloc(argv[i]);
         if (!file_content) {
             printf("could not open file \"%s\"", argv[i]);
             exit(1);
         }
         set_enviroment(argv[i]);
         TokenList token_list = lex(file_content);
-        if (token_list.tokens == NULL) continue;
+        if (token_list.tokens == NULL)
+            continue;
         file_contents[i - 1] = file_content;
         print_tokens(token_list);
+        printf("\n");
         unsigned int index = 0;
-        StringDict* content = scan_content(token_list, &index);
+        StringDict *content = scan_content(token_list, &index);
         if (content) {
             print_scan_result(content);
             string_dict_put(&general_identifier_dict, argv[i], content);
         }
-        free_tokens(token_list);
+        token_lists[i - 1] = token_list;
     }
-    string_dict_foreach(&general_identifier_dict, compile_text);
+    parse(&general_identifier_dict);
+    printf("\n");
+    print_exec_text(&general_identifier_dict);
     for (int i = 0; i < argc - 1; i++) {
+        free_tokens(token_lists[i]);
         free(file_contents[i]);
     }
     string_dict_foreach(&general_identifier_dict, free_scan_result);

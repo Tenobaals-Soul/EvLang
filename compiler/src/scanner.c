@@ -23,7 +23,7 @@ typedef struct state {
     struct state (*func)(state_data*);
 } state;
 
-Token* get_token(state_data* state) {
+static inline Token* get_token(state_data* state) {
     return &state->token_list.tokens[state->index];
 }
 
@@ -51,8 +51,9 @@ Accessability get_accessability(TokenList tokens, unsigned int i) {
     }
 }
 
-StackedData* empty_base_entry() {
+StackedData* empty_base_entry(TokenList token_list) {
     StackedData* entry = calloc(sizeof(StackedData), 1);
+    entry->env_token = token_list;
     entry->type = ENTRY_VARIABLE;
     entry->accessability = PROTECTED;
     entry->class.derives_from = NULL;
@@ -84,66 +85,55 @@ bool append_method(StringDict* class_content, Token* pos, StackedData* entry_fou
     return true;
 }
 
-// "src\0\0", "append\0" -> "src\0append\0\0"
-char* append_accessor_str(char* src, char* append) {
-    int i;
-    for (i = 0; src[i] || src[i + 1]; i++);
-    int n_len = strlen(append);
-    src = realloc(src, i + n_len + 3);
-    strcpy(src + i + 1, append);
-    src[i + n_len + 2] = 0;
-    return src;
-}
-
-void throw_expected_def(Token* token_with_error) {
+static void throw_expected_def(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a definiton of a class, function or variable");
 }
 
-void throw_expected_name(Token* token_with_error) {
+static void throw_expected_name(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a name here");
 }
 
-void throw_unexpected_token(Token* token_with_error) {
+static void throw_unexpected_token(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "unexpected token");
 }
 
-void throw_expected_class(Token* token_with_error) {
+static void throw_expected_class(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a class here");
 }
 
-void throw_expected_class_or_method(Token* token_with_error) {
+static void throw_expected_class_or_method(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a \"class\" keyword or a type for a method or a variale");
 }
 
-void throw_perhaps_missing_assign(Token* token_with_error) {
+static void throw_perhaps_missing_assign(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a \"=\", \"(\" or a \";\", you are propably missing a \"=\" between your variable and your value");
 }
 
-void throw_no_semicolon(Token* token_with_error) {
+static void throw_no_semicolon(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "missing \";\"");
 }
 
-void throw_unexpected_end(Token* token_with_error) {
+static void throw_unexpected_end(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line + token_with_error->text_len - 1, 1,
         "unexpected EOF");
 }
 
-void throw_raw_expected(Token* token_with_error, const char* expected, ...) {
+static void throw_raw_expected(Token* token_with_error, const char* expected, ...) {
     va_list arglist;
 
     va_start( arglist, expected );
@@ -153,7 +143,7 @@ void throw_raw_expected(Token* token_with_error, const char* expected, ...) {
     va_end( arglist );
 }
 
-void throw_redefinition_error(Token* token_with_error, const char* name) {
+static void throw_redefinition_error(Token* token_with_error, const char* name) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "redefinition of symbol", name);
@@ -165,7 +155,7 @@ bool flush_stacked_data(state_data* data) {
         return false;
     }
     string_dict_put(data->dest, data->st_data->name, data->st_data);
-    data->st_data = empty_base_entry();
+    data->st_data = empty_base_entry(data->token_list);
     return true;
 }
 
@@ -426,7 +416,7 @@ state skip(state_data* data) {
     while (true) {
         switch (data->token_list.tokens[data->index].type) {
         case END_TOKEN:
-            data->st_data = empty_base_entry();
+            data->st_data = empty_base_entry(data->token_list);
             transition(scan_class, END_FINE);
         case SEPERATOR_TOKEN:
             transition(scan_class_found_type_no_method);
@@ -436,7 +426,7 @@ state skip(state_data* data) {
         case K_STATIC_TOKEN:
         case K_CLASS_TOKEN:
             data->index--;
-            data->st_data = empty_base_entry();
+            data->st_data = empty_base_entry(data->token_list);
             transition(scan_class, END_ERROR);
         default:
             data->index++;
@@ -451,7 +441,7 @@ state scan_class_found_name(state_data* data) {
     case END_TOKEN:
         data->st_data->type = ENTRY_VARIABLE;
         flush_stacked_data(data);
-        data->st_data = empty_base_entry();
+        data->st_data = empty_base_entry(data->token_list);
         transition(scan_class);
     case ASSIGN_TOKEN:
         data->st_data->type = ENTRY_VARIABLE;
@@ -505,18 +495,19 @@ char inverse_bracket(char bracket) {
 }
 
 state var_got_assigned(state_data* data) {
-    data->st_data->var.text_start = data->index;
+    data->st_data->text_start = data->index;
     int layer = 0;
     char type = 0;
     while (true) {
         if (data->index >= data->token_list.cursor) {
             data->index--;
+            data->st_data->text_end = data->index;
             transition(scan_class);
         }
-        Token* token = &data->token_list.tokens[data->index];
+        Token* token = get_token(data);
         switch (token->type) {
         case END_TOKEN:
-            data->st_data->var.text_end = data->index;
+            data->st_data->text_end = data->index;
             flush_stacked_data(data);
             if (layer == 0) transition(scan_class);
             break;
@@ -585,7 +576,10 @@ state var_got_assigned(state_data* data) {
             flush_stacked_data(data);
             *data->st_data = *old_entry;
             data->st_data->var.type = strmcpy(old_entry->var.type);
-            if (layer == 0) transition(scan_class_found_type_no_method);
+            if (layer == 0) {
+                old_entry->text_end = data->index;
+                transition(scan_class_found_type_no_method);
+            }
         default:
             break;
         }
@@ -646,7 +640,7 @@ state scan_method_args_ended(state_data* data) {
 }
 
 state scan_method_body(state_data* data) {
-    data->st_data->method.text_start = data->index;
+    data->st_data->text_start = data->index;
     Token* token = get_token(data);
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
@@ -660,8 +654,8 @@ state scan_method_body(state_data* data) {
         else {
             data->depth = 0;
             append_method(data->dest, token, data->st_data, data->st_data->name);
-            data->st_data = empty_base_entry();
-            data->st_data->method.text_end = data->index;
+            data->st_data = empty_base_entry(data->token_list);
+            data->st_data->text_end = data->index;
             transition(scan_class);
         }
     default:
@@ -676,7 +670,7 @@ StringDict* scan_content(TokenList tokens, unsigned int* index) {
     bool error = false;
     state_data data = {
         .dest = dict,
-        .st_data = empty_base_entry(),
+        .st_data = empty_base_entry(tokens),
         .token_list = tokens,
         .index = *index,
         .flags = 0

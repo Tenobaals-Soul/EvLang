@@ -1,5 +1,8 @@
 #include<parser.h>
 #include<stdlib.h>
+#include<stdarg.h>
+#include<stack.h>
+#include<stdio.h>
 
 struct parse_args {
     bool has_errors;
@@ -10,7 +13,12 @@ struct parse_args {
 typedef struct state_data {
     unsigned int index;
     unsigned int flags;
-    Expression* exp;
+    const char* on_eof;
+    unsigned int paranthesis_layer;
+    Stack value_stack;
+    Stack operator_stack;
+    char* accessor;
+    TokenList tokens;
 } state_data;
 
 typedef struct state {
@@ -37,29 +45,166 @@ void free_expression(Expression* exp) {
     free(exp);
 }
 
+static void throw_raw_expected(Token* token_with_error, const char* expected, ...) {
+    va_list arglist;
+
+    va_start( arglist, expected );
+    make_error(token_with_error->line_content, token_with_error->line_in_file,
+        token_with_error->char_in_line, token_with_error->text_len,
+        "expected %s", expected, arglist);
+    va_end( arglist );
+}
+
+static void throw_unexpected_end(Token* token_with_error) {
+    make_error(token_with_error->line_content, token_with_error->line_in_file,
+        token_with_error->char_in_line + token_with_error->text_len - 1, 1,
+        "unexpected EOF");
+}
+
+static inline Token* get_token(state_data* state) {
+    return state->index < state->tokens.cursor ? &state->tokens.tokens[state->index] : NULL;
+}
+
+static const int op_prio[] = {
+    [ADD_OPERATOR] = 0,
+    [SUBTRACT_OPERATOR] = 0,
+    [MULTIPLY_OPERATOR] = 1,
+    [DIVIDE_OPERATOR] = 1,
+    [RIGHT_SHIFT_OPERATOR] = 2,
+    [LEFT_SHIFT_OPERATOR] = 2,
+    [EQUALS_OPERATOR] = -2,
+    [SMALLER_THAN_OPERATOR] = -1,
+    [SMALLER_EQUAL_OPERATOR] = -1,
+    [GREATER_THAN_OPERATOR] = -1,
+    [GREATER_EQUAL_OPERATOR] = -1,
+    [NOT_EQUAL_OPERATOR] = -2
+};
+
+state parse_exp_start(state_data* data);
+state parse_exp_found_open_paranthesis(state_data* data);
+state parse_exp_found_value(state_data* data);
+state parse_exp_found_ident(state_data* data);
+state parse_exp_found_ident_dot(state_data* data);
+
 state parse_exp_start(state_data* data) {
     Token* token = get_token(data);
+    Expression* exp;
     switch (token->type) {
     case FIXED_VALUE_TOKEN:
-        //transition();
+        exp = calloc(sizeof(Expression), 1);
+        exp->expression_type = EXPRESSION_FIXED_VALUE;
+        exp->fixed_value = token;
+        push(&data->value_stack, exp);
+        transition(parse_exp_found_value, END_FINE);
+    case IDENTIFIER_TOKEN:
+        exp = calloc(sizeof(Expression), 1);
+        exp->expression_type = EXPRESSION_VAR;
+        push(&data->value_stack, exp);
+        data->accessor = append_accessor_str(data->accessor, token->identifier);
+        transition(parse_exp_found_ident, END_FINE);
+    case OPEN_PARANTHESIS_TOKEN:
+        data->paranthesis_layer++;
+        exp = calloc(sizeof(Expression), 1);
+        exp->expression_type = EXPRESSION_OPEN_PARANTHESIS_GUARD;
+        push(&data->operator_stack, exp);
+        transition(parse_exp_start);
     default:
-        throw_raw_expected(token, "expected \"{\"");
-        //transition(NULL, END_ERROR);
+        throw_raw_expected(token, "expecten an expression");
+        transition(NULL, END_ERROR);
     }
 }
 
-Expression* parse_expression(StackedData* method, struct parse_args* args) {
+state on_found_operator_token(state_data* data, Token* token) {
+    Expression* top = NULL;
+    while ((top = peek(&data->operator_stack)) && top->expression_type != EXPRESSION_OPEN_PARANTHESIS_GUARD
+            && op_prio[top->expression_operator.operator] >= op_prio[token->operator_type]) {
+        pop(&data->operator_stack);
+        Expression* val2 = pop(&data->value_stack);
+        Expression* val1 = pop(&data->value_stack);
+        if (val1 == NULL || val2 == NULL) {
+            printf("fatal internal error - parse - %d", __LINE__);
+            exit(1);
+        }
+        top->expression_operator.left = val1;
+        top->expression_operator.right = val2;
+        push(&data->value_stack, top);
+    }
+    Expression* operator = calloc(sizeof(Expression), 1);
+    operator->expression_type = EXPRESSION_OPERATOR;
+    operator->expression_operator.operator = token->operator_type;
+    push(&data->operator_stack, operator);
+    transition(parse_exp_start);
+}
+
+state on_found_closing_paranthesis(state_data* data, Token* token) {
+    if (token && data->paranthesis_layer == 0) {
+        throw_raw_expected(token, "no matching opening paranthesis found");
+        transition(NULL, END_ERROR);
+    }
+    Expression* top = NULL;
+    while ((top = peek(&data->operator_stack)) && top->expression_type != EXPRESSION_OPEN_PARANTHESIS_GUARD) {
+        pop(&data->operator_stack);
+        Expression* val2 = pop(&data->value_stack);
+        Expression* val1 = pop(&data->value_stack);
+        if (val1 == NULL || val2 == NULL) {
+            printf("fatal internal error - parse - %d", __LINE__);
+            exit(1);
+        }
+        top->expression_operator.left = val1;
+        top->expression_operator.right = val2;
+        push(&data->value_stack, top);
+    }
+    if (token) free(pop(&data->operator_stack));
+    transition(parse_exp_found_value, END_FINE);
+}
+
+state parse_exp_found_ident(state_data* data) {
+    Token* token = get_token(data);
+    Expression* exp;
+    switch (token->type) {
+    case OPERATOR_TOKEN:
+    case IDENTIFIER_TOKEN:
+        data->accessor = append_accessor_str(data->accessor, token->identifier);
+        transition(parse_exp_found_ident, END_FINE);
+    case OPEN_PARANTHESIS_TOKEN:
+        data->paranthesis_layer++;
+        push(&data->operator_stack, &token);
+        transition(parse_exp_start);
+    default:
+        throw_raw_expected(token, "unexpected token");
+        transition(NULL, END_ERROR);
+    }
+}
+
+state parse_exp_found_value(state_data* data) {
+    Token* token = get_token(data);
+    Expression* val2;
+    switch (token->type) {
+    case OPERATOR_TOKEN:;
+        return on_found_operator_token(data, token);
+    case CLOSE_PARANTHESIS_TOKEN:;
+        return on_found_closing_paranthesis(data, token);
+    default:
+        throw_raw_expected(token, "unexpected token");
+        transition(NULL, END_ERROR);
+    }
+}
+
+Expression* parse_expression(StackedData* method_or_var, struct parse_args* args) {
     state next_state = { parse_exp_start };
     bool error = false;
-    state_data data = {
-        .index = 0,
-        .flags = 0,
-        .exp = NULL
-    };
+    state_data data = {0};
+    data.index = method_or_var->text_start;
+    data.tokens = method_or_var->env_token;
     while (next_state.func) {
-        if (data.index >= method->method.text_start) {
+        if (data.index >= method_or_var->text_end || get_token(&data)->type == END_TOKEN ||
+                (get_token(&data)->type == SEPERATOR_TOKEN && data.paranthesis_layer == 0)) {
             if (data.flags & END_FINE) {
-                return data.exp;
+                on_found_closing_paranthesis(&data, NULL);
+                Expression* to_return = pop(&data.value_stack);
+                stack_destroy(&data.value_stack);
+                stack_destroy(&data.operator_stack);
+                return to_return;
             }
             else {
                 throw_unexpected_end(&args->tokens.tokens[data.index - 1]);
@@ -75,15 +220,21 @@ Expression* parse_expression(StackedData* method, struct parse_args* args) {
     }
     if (error) {
         data.index--;
-        free_expression(data.exp);
         return NULL;
     }
-    data.index--;
-    return data.exp;
+    Expression* to_return = pop(&data.value_stack);
+    stack_destroy(&data.value_stack);
+    stack_destroy(&data.operator_stack);
+    return to_return;
 }
 
 void parse_method(StackedData* method, struct parse_args* args) {
-
+    /*
+    Token* token;
+    while ((token = get_token(data, peek(&data->data_env))) && token->type != END_TOKEN) {
+        data->index++;
+    }
+    */
 }
 
 void parse_dict_item(void* env, const char* key, void* val) {
@@ -109,7 +260,7 @@ void parse_dict_item(void* env, const char* key, void* val) {
         }
         break;
     case ENTRY_VARIABLE:
-        if (st_data->var.text_start && st_data->var.text_end) {
+        if (st_data->text_start && st_data->text_end) {
             st_data->var.exec_text = parse_expression(st_data, args);
         }
         else {
@@ -119,16 +270,20 @@ void parse_dict_item(void* env, const char* key, void* val) {
     }
 }
 
+static void parse_with_context_wrapper(void* env, const char* key, void* val) {
+    (void) key;
+    parse_with_context(val, env);
+}
+
 static inline bool parse_with_context(StringDict* dict_to_parse, struct parse_args* args) {
     string_dict_complex_foreach(dict_to_parse, parse_dict_item, args);
 }
 
-bool parse(StringDict* dict_to_parse, TokenList tokenlist) {
+bool parse(StringDict* dict_to_parse) {
     struct parse_args args = {
         false,
-        NULL,
-        tokenlist
+        NULL
     };
-    parse_with_context(dict_to_parse, &args);
+    string_dict_complex_foreach(dict_to_parse, parse_with_context_wrapper, &args);
     return args.has_errors;
 }

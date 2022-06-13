@@ -4,6 +4,9 @@
 #include<stdbool.h>
 #include<string_dict.h>
 
+// "src\0\0", "append\0" -> "src\0append\0\0"
+char* append_accessor_str(char* src, char* append);
+
 typedef enum FixedDataType {
     INTEGER, FLOATING, STRING, BOOLEAN, CHARACTER
 } FixedDataType;
