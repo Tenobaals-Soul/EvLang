@@ -1,6 +1,6 @@
-#include"scanner.h"
-#include"string_dict.h"
-#include"compiler.h"
+#include<scanner.h>
+#include<string_dict.h>
+#include<compiler.h>
 #include<stdlib.h>
 #include<string.h>
 #include<stdlib.h>
@@ -453,11 +453,7 @@ state scan_class_found_name(state_data* data) {
         flush_stacked_data(data);
         data->st_data = empty_base_entry();
         transition(scan_class);
-    case OPERATOR_TOKEN:
-        if (token->operator_type != ASSIGN_OPERATOR) {
-            throw_perhaps_missing_assign(token);
-            transition(NULL, END_ERROR);
-        }
+    case ASSIGN_TOKEN:
         data->st_data->type = ENTRY_VARIABLE;
         transition(var_got_assigned);
     case OPEN_PARANTHESIS_TOKEN:
@@ -495,11 +491,7 @@ state scan_class_found_name_no_method(state_data* data) {
         data->st_data->type = ENTRY_VARIABLE;
         flush_stacked_data(data);
         transition(scan_class);
-    case OPERATOR_TOKEN:
-        if (token->operator_type != ASSIGN_OPERATOR) {
-            throw_perhaps_missing_assign(token);
-            transition(NULL, END_ERROR);
-        }
+    case ASSIGN_TOKEN:
         data->st_data->type = ENTRY_VARIABLE;
         transition(var_got_assigned);
     default:

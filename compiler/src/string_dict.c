@@ -1,6 +1,6 @@
 #include<stdlib.h>
 #include<string.h>
-#include"string_dict.h"
+#include<string_dict.h>
 
 struct string_dict_item {
     char* key;

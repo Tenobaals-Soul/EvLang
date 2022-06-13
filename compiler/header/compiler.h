@@ -2,6 +2,7 @@
 #define INCLUDE_COMPILER_H
 #include<inttypes.h>
 #include<stdbool.h>
+#include<string_dict.h>
 
 typedef enum FixedDataType {
     INTEGER, FLOATING, STRING, BOOLEAN, CHARACTER
@@ -11,7 +12,7 @@ typedef enum BasicOperator {
     ADD_OPERATOR, SUBTRACT_OPERATOR, 
     MULTIPLY_OPERATOR, DIVIDE_OPERATOR,
     RIGHT_SHIFT_OPERATOR, LEFT_SHIFT_OPERATOR, 
-    EQUALS_OPERATOR, ASSIGN_OPERATOR,
+    EQUALS_OPERATOR,
     SMALLER_THAN_OPERATOR, SMALLER_EQUAL_OPERATOR,
     GREATER_THAN_OPERATOR, GREATER_EQUAL_OPERATOR,
     NOT_EQUAL_OPERATOR
@@ -30,7 +31,7 @@ typedef enum TokenType {
     C_IF_TOKEN, C_FOR_TOKEN, C_WHILE_TOKEN,
     C_BREAK_TOKEN, C_RETURN_TOKEN,
     C_SWITCH_TOKEN, C_CASE_TOKEN,
-    C_DEFAULT_TOKEN
+    C_DEFAULT_TOKEN, ASSIGN_TOKEN
 } TokenType;
 
 typedef struct Token {
@@ -60,47 +61,6 @@ typedef struct TokenList {
     unsigned int cursor;
 } TokenList;
 
-typedef enum ExecuteTreeType {
-    EXEC_OPERATE, EXEC_VALUE, EXEC_VARIABLE, EXEC_CALL,
-    EXEC_ARGUMENT, EXEC_RETURN, EXEC_IF,
-    EXEC_FOR, EXEC_WHILE
-} ExecuteTreeType;
-
-typedef struct Text {
-    ExecuteTreeType type;
-    union {
-        struct {
-            BasicOperator type;
-            Text* values[2];
-        } operate;
-        union {
-            int8_t ibyte;
-            int16_t ishort;
-            int32_t iint;
-            int64_t ilong;
-            char* string;
-        } value;
-        StackedData* variable;
-        StackedData* call;
-        Text* argument;
-        Text* exp_return;
-        struct {
-            Text* condition;
-            Text* on_true;
-            Text* on_false;
-        } exp_if;
-        struct {
-            Text* begin;
-            Text* condition;
-            Text* text;
-        } exp_for;
-        struct {
-            Text* condition;
-            Text* text;
-        } exp_for;
-    };
-} Text;
-
 void set_enviroment(const char* enviroment);
 
 void make_error(const char * line, unsigned int line_no, unsigned int char_no, 
@@ -112,6 +72,6 @@ void make_warning(const char* line, unsigned int line_no, unsigned int char_no,
 void free_scan_result(const char* key, void* val);
 
 // src\0src\0\0 -> StackedData
-StackedData* get_from_ident_dot_seq(StringDict* src, const char* name, TokenList* tokens, int token_index);
+struct StackedData* get_from_ident_dot_seq(StringDict* src, const char* name, TokenList* tokens, int token_index);
 
 #endif

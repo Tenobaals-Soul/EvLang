@@ -1,5 +1,5 @@
-#include"tokenizer.h"
-#include"string_dict.h"
+#include<tokenizer.h>
+#include<string_dict.h>
 #include<stdlib.h>
 #include<stdbool.h>
 #include<ctype.h>
@@ -333,7 +333,6 @@ static int try_extract_operator(current_read_data * cr, const char ** src, Token
     if (make_operator(cr, src, list, MULTIPLY_OPERATOR, "*")) return 1;
     if (make_operator(cr, src, list, DIVIDE_OPERATOR, "/")) return 1;
     if (make_operator(cr, src, list, EQUALS_OPERATOR, "==")) return 1;
-    if (make_operator(cr, src, list, ASSIGN_OPERATOR, "=")) return 1;
     if (make_operator(cr, src, list, SMALLER_THAN_OPERATOR, "<")) return 1;
     if (make_operator(cr, src, list, GREATER_THAN_OPERATOR, "<=")) return 1;
     if (make_operator(cr, src, list, SMALLER_EQUAL_OPERATOR, ">")) return 1;
@@ -344,7 +343,21 @@ static int try_extract_operator(current_read_data * cr, const char ** src, Token
     return 0;
 }
 
-int try_extract_any_paranthesis(current_read_data * cr, const char ** src, TokenList * list) {
+static int try_extract_assign(current_read_data * cr, const char ** src, TokenList * list) {
+    if (src[0] == "=") {
+        list->tokens[list->cursor].type = ASSIGN_TOKEN;
+        list->tokens[list->cursor].char_in_line = cr->current_char;
+        list->tokens[list->cursor].line_in_file = cr->current_line;
+        list->tokens[list->cursor].line_content = cr->line_begin;
+        list->tokens[list->cursor].text_len = 1;
+        cr->current_char += 1;
+        *src += 1;
+        return 1;
+    }
+    return 0;
+}
+
+static int try_extract_any_paranthesis(current_read_data * cr, const char ** src, TokenList * list) {
     switch (**src) {
     case '(':
         list->tokens[list->cursor].type = OPEN_PARANTHESIS_TOKEN;
@@ -432,6 +445,7 @@ int extract_next(current_read_data* cr, StringDict* dict, const char** src, Toke
     if (try_extract_fixed_value(cr, src, list)) return 1;
     if (try_extract_any_paranthesis(cr, src, list)) return 1;
     if (try_extract_operator(cr, src, list)) return 1;
+    if (try_extract_assign(cr, src, list)) return 1;
     if (try_extract_seperator(cr, src, list)) return 1;
     if (try_extract_dot(cr, src, list)) return 1;
     unsigned int len = t_err(cr, src);

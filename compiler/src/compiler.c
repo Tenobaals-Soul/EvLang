@@ -1,6 +1,6 @@
-#include"string_dict.h"
-#include"tokenizer.h"
-#include"scanner.h"
+#include<string_dict.h>
+#include<tokenizer.h>
+#include<scanner.h>
 #include<stdarg.h>
 #include<stdio.h>
 #include<stdlib.h>
@@ -70,8 +70,8 @@ void message_internal(const char* color_code, const char* line, unsigned int lin
 }
 
 StackedData* get_from_ident_dot_seq(StringDict* src, const char* name, TokenList* tokens, int token_index) {
-    char* env = enviroment;
-    char* acs = name;
+    const char* env = enviroment;
+    const char* acs = name;
     StackedData* found;
     for (int i = 0; name[i + 1]; i++) {
         found = string_dict_get(src, acs);
@@ -127,6 +127,7 @@ void print_accessor_str(char* accstr) {
 }
 
 void compile_text(const char* key, void* val) {
+    /*
     StackedData* entry = val;
     if (entry->type == ENTRY_CLASS) {
         string_dict_foreach(entry->class.class_content, compile_text);
@@ -142,6 +143,7 @@ void compile_text(const char* key, void* val) {
     else if (entry->type == ENTRY_VARIABLE) {
         compile_statement(entry->text);
     }
+    */
 }
 
 void print_tokens(TokenList l) {
@@ -394,7 +396,11 @@ char* fmalloc(const char* filename) {
     lseek(fd, 0, SEEK_SET);
     char* file_content = malloc(len + 1);
     if (file_content == NULL) return NULL;
-    read(fd, file_content, len);
+    ssize_t r = read(fd, file_content, len);
+    if (r < 0) {
+        free(file_content);
+        return NULL;
+    }
     close(fd);
     file_content[len] = 0;
     return file_content;
