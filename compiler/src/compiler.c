@@ -518,6 +518,7 @@ void free_ast(const char *key, void *val) {
     switch (entry->type) {
     case ENTRY_MODULE:
         string_dict_foreach(entry->class.class_content, free_ast);
+        string_dict_destroy(entry->class.class_content);
         free(entry->class.class_content);
         break;
     case ENTRY_CLASS:
