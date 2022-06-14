@@ -3,11 +3,13 @@
 #include<stdarg.h>
 #include<stack.h>
 #include<stdio.h>
+#include<compiler.h>
 
 struct parse_args {
     bool has_errors;
     StackedData* context;
     TokenList tokens;
+    StringDict* global_access_dict;
 };
 
 typedef struct state_data {
@@ -19,6 +21,8 @@ typedef struct state_data {
     Stack operator_stack;
     char* accessor;
     TokenList tokens;
+    StringDict* global_access_dict;
+    StringDict* local_access_dict;
 } state_data;
 
 typedef struct state {
@@ -97,10 +101,11 @@ state parse_exp_start(state_data* data) {
         push(&data->value_stack, exp);
         transition(parse_exp_found_value, END_FINE);
     case IDENTIFIER_TOKEN:
-        exp = calloc(sizeof(Expression), 1);
-        exp->expression_type = EXPRESSION_VAR;
-        push(&data->value_stack, exp);
         data->accessor = append_accessor_str(data->accessor, token->identifier);
+        if (get_from_ident_dot_seq(data->local_access_dict, data->accessor, &data->tokens, data->index - 1, false) == NULL &&
+            get_from_ident_dot_seq(data->global_access_dict, data->accessor, &data->tokens, data->index - 1, true) == NULL) {
+            transition(parse_exp_found_ident, END_ERROR);
+        }
         transition(parse_exp_found_ident, END_FINE);
     case OPEN_PARANTHESIS_TOKEN:
         data->paranthesis_layer++;
@@ -142,8 +147,7 @@ state on_found_closing_paranthesis(state_data* data, Token* token) {
         transition(NULL, END_ERROR);
     }
     Expression* top = NULL;
-    while ((top = peek(&data->operator_stack)) && top->expression_type != EXPRESSION_OPEN_PARANTHESIS_GUARD) {
-        pop(&data->operator_stack);
+    while ((top = pop(&data->operator_stack)) && top->expression_type != EXPRESSION_OPEN_PARANTHESIS_GUARD) {
         Expression* val2 = pop(&data->value_stack);
         Expression* val1 = pop(&data->value_stack);
         if (val1 == NULL || val2 == NULL) {
@@ -154,7 +158,7 @@ state on_found_closing_paranthesis(state_data* data, Token* token) {
         top->expression_operator.right = val2;
         push(&data->value_stack, top);
     }
-    if (token) free(pop(&data->operator_stack));
+    if (token) free(top);
     transition(parse_exp_found_value, END_FINE);
 }
 
@@ -163,13 +167,17 @@ state parse_exp_found_ident(state_data* data) {
     Expression* exp;
     switch (token->type) {
     case OPERATOR_TOKEN:
-    case IDENTIFIER_TOKEN:
-        data->accessor = append_accessor_str(data->accessor, token->identifier);
-        transition(parse_exp_found_ident, END_FINE);
-    case OPEN_PARANTHESIS_TOKEN:
-        data->paranthesis_layer++;
-        push(&data->operator_stack, &token);
-        transition(parse_exp_start);
+        Expression* exp = calloc(sizeof(Expression), 1);
+        exp->expression_type = EXPRESSION_VAR;
+        exp->expression_variable = get_from_ident_dot_seq(data->local_access_dict, data->accessor, &data->tokens, data->index - 1, false);
+        if (exp->expression_variable == NULL) {
+            exp->expression_variable = get_from_ident_dot_seq(data->global_access_dict, data->accessor, &data->tokens, data->index - 1, true);
+        }
+        push(&data->value_stack, exp);
+        free(data->accessor);
+        return on_found_operator_token(data, token);
+    case CLOSE_PARANTHESIS_TOKEN:
+        return on_found_closing_paranthesis(data, token);
     default:
         throw_raw_expected(token, "unexpected token");
         transition(NULL, END_ERROR);
@@ -190,10 +198,12 @@ state parse_exp_found_value(state_data* data) {
     }
 }
 
-Expression* parse_expression(StackedData* method_or_var, struct parse_args* args) {
+Expression* parse_expression(StringDict* global_access_dict, StringDict* local_access_dict, StackedData* method_or_var, struct parse_args* args) {
     state next_state = { parse_exp_start };
     bool error = false;
     state_data data = {0};
+    data.local_access_dict = local_access_dict;
+    data.global_access_dict = global_access_dict;
     data.index = method_or_var->text_start;
     data.tokens = method_or_var->env_token;
     while (next_state.func) {
@@ -243,8 +253,10 @@ void parse_dict_item(void* env, const char* key, void* val) {
     switch (st_data->type) {
     case ENTRY_CLASS:
         struct parse_args new_args = {
-            st_data,
-            false
+            .context = st_data,
+            .has_errors = false,
+            .global_access_dict = st_data->class.class_content,
+            .tokens = st_data->env_token
         };
         parse_with_context(st_data->class.class_content, &new_args);
         args->has_errors |= new_args.has_errors;
@@ -261,7 +273,14 @@ void parse_dict_item(void* env, const char* key, void* val) {
         break;
     case ENTRY_VARIABLE:
         if (st_data->text_start && st_data->text_end) {
-            st_data->var.exec_text = parse_expression(st_data, args);
+            StringDict* local_access_dict;
+            if (args->context == NULL) {
+                local_access_dict = NULL;
+            }
+            else {
+                local_access_dict = args->context->class.class_content;
+            }
+            st_data->var.exec_text = parse_expression(args->global_access_dict, local_access_dict, st_data, args);
         }
         else {
             st_data->var.exec_text = NULL;
@@ -279,11 +298,13 @@ static inline bool parse_with_context(StringDict* dict_to_parse, struct parse_ar
     string_dict_complex_foreach(dict_to_parse, parse_dict_item, args);
 }
 
-bool parse(StringDict* dict_to_parse) {
+bool parse(StringDict* global_access_dict) {
     struct parse_args args = {
-        false,
-        NULL
+        .has_errors = false,
+        .context = NULL,
+        .global_access_dict = global_access_dict,
+        .tokens = NULL
     };
-    string_dict_complex_foreach(dict_to_parse, parse_with_context_wrapper, &args);
+    string_dict_complex_foreach(global_access_dict, parse_with_context_wrapper, &args);
     return args.has_errors;
 }

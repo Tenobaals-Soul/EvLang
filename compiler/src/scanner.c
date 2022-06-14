@@ -697,7 +697,7 @@ StringDict* scan_content(TokenList tokens, unsigned int* index) {
     if (error) {
         data.index--;
         *index = data.index;
-        free_scan_result(NULL, dict);
+        free_ast(NULL, dict);
         free(data.st_data);
         return NULL;
     }

@@ -70,27 +70,29 @@ void message_internal(const char *color_code, const char *line, unsigned int lin
     }
 }
 
-StackedData *get_from_ident_dot_seq(StringDict *src, const char *name, TokenList *tokens, int token_index) {
+StackedData *get_from_ident_dot_seq(StringDict *src, const char *name, TokenList *tokens, int token_index, bool throw) {
     const char *env = enviroment;
     const char *acs = name;
     StackedData *found;
-    for (int i = 0; name[i + 1]; i++) {
+    for (int i = 0; name[i] || name[i + 1];) {
         found = string_dict_get(src, acs);
         if (found == NULL) {
-            if (name == NULL) {
-                Token *t = &tokens->tokens[token_index];
-                make_error(t->line_content, t->line_in_file, t->char_in_line,
-                           t->text_len, "%s has no members", env, name + i);
+            if (throw) {
+                if (!src || src->count == 0) {
+                    Token *t = &tokens->tokens[token_index];
+                    make_error(t->line_content, t->line_in_file, t->char_in_line,
+                            t->text_len, "%s has no members", env, name + i);
+                }
+                else {
+                    Token *t = &tokens->tokens[token_index];
+                    make_error(t->line_content, t->line_in_file, t->char_in_line,
+                            t->text_len, "%s has no member %s", env, name + i);
+                }
             }
-            else {
-                Token *t = &tokens->tokens[token_index];
-                make_error(t->line_content, t->line_in_file, t->char_in_line,
-                           t->text_len, "%s has no member %s", env, name + i);
-            }
+            return NULL;
         }
         env = name;
-        for (acs = name + i; acs[i]; i++)
-            ;
+        for (acs = name + i; acs[i]; i++);
         src = found->type == ENTRY_CLASS ? found->class.class_content : NULL;
     }
     return found;
@@ -119,13 +121,14 @@ void make_warning(const char *line, unsigned int line_no, unsigned int char_no,
 // "src\0\0", "append\0" -> "src\0append\0\0"
 char *append_accessor_str(char *src, char *append) {
     int i = 0;
-    if (src)
-        for (; src[i] || src[i + 1]; i++)
-            ;
+    if (src) {
+        for (; src[i] || src[i + 1]; i++);
+        i++;
+    }
     int n_len = strlen(append);
-    src = realloc(src, i + n_len + 3);
-    strcpy(src + i + 1, append);
-    src[i + n_len + 2] = 0;
+    src = realloc(src, i + n_len + 2);
+    strcpy(src + i, append);
+    src[i + n_len + 1] = 0;
     return src;
 }
 
@@ -319,16 +322,16 @@ void free_tokens(TokenList token_list) {
     free(token_list.tokens);
 }
 
-void print_exec_text_internal2(Expression *exp) {
+void print_ast_internal2(Expression *exp) {
     switch (exp->expression_type) {
     case EXPRESSION_CALL:
         printf("%s(", exp->expression_call.call->name);
         unsigned int i;
         for (i = 0; exp->expression_call.args[i]; i++) {
-            print_exec_text_internal2(exp->expression_call.args[i]);
+            print_ast_internal2(exp->expression_call.args[i]);
         }
         if (exp->expression_call.args[i]) {
-            print_exec_text_internal2(exp->expression_call.args[i]);
+            print_ast_internal2(exp->expression_call.args[i]);
         }
         printf(")");
     case EXPRESSION_FIXED_VALUE:
@@ -336,18 +339,23 @@ void print_exec_text_internal2(Expression *exp) {
         break;
     case EXPRESSION_OPEN_PARANTHESIS_GUARD:
         printf("detected fatal internal error - error type detected - %d\n", __LINE__);
+        exit(1);
     case EXPRESSION_OPERATOR:
         printf("(");
-        print_exec_text_internal2(exp->expression_operator.left);
+        print_ast_internal2(exp->expression_operator.left);
         printf(") ");
         print_operator(exp->expression_operator.operator);
         printf(" (");
-        print_exec_text_internal2(exp->expression_operator.right);
+        print_ast_internal2(exp->expression_operator.right);
         printf(")");
+        break;
+    case EXPRESSION_VAR:
+        printf("%s", exp->expression_variable ? exp->expression_variable->name : "error-var");
+        break;
     }
 }
 
-void print_exec_text_internal(void *env, const char *name, void *val) {
+void print_ast_internal(void *env, const char *name, void *val) {
     int layer = *((int *) env);
     char indent[layer * 4 + 1];
     memset(indent, ' ', layer * 4);
@@ -357,7 +365,7 @@ void print_exec_text_internal(void *env, const char *name, void *val) {
     case ENTRY_CLASS:;
         printf("%sclass %s with %d entrys:\n", indent, entry->name, entry->class.class_content->count);
         layer++;
-        string_dict_complex_foreach(entry->class.class_content, print_exec_text_internal, &layer);
+        string_dict_complex_foreach(entry->class.class_content, print_ast_internal, &layer);
     case ENTRY_METHOD:
         printf("%s%s %s(", indent, entry->method.return_type, name);
         unsigned int i;
@@ -373,13 +381,13 @@ void print_exec_text_internal(void *env, const char *name, void *val) {
         printf("%smethod %s with %d overloaded variant(s):\n", indent, name, entry->method_table.len);
         layer++;
         for (unsigned int i = 0; i < entry->method_table.len; i++) {
-            print_exec_text_internal(&layer, name, entry->method_table.methods[i]);
+            print_ast_internal(&layer, name, entry->method_table.methods[i]);
         }
         break;
     case ENTRY_VARIABLE:
         printf("%s%s %s = ", indent, entry->var.type, name);
         if (entry->var.exec_text) {
-            print_exec_text_internal2(entry->var.exec_text);
+            print_ast_internal2(entry->var.exec_text);
         }
         else {
             printf("NONE");
@@ -397,14 +405,14 @@ void print_exec_text_internal(void *env, const char *name, void *val) {
     }
 }
 
-void print_exec_text_wrap(const char* key, void* val) {
+void print_ast_wrap(const char* key, void* val) {
     int layer = 1;
     printf("module %s with %d entrys:\n", key, ((StringDict*) val)->count);
-    string_dict_complex_foreach(val, print_exec_text_internal, &layer);
+    string_dict_complex_foreach(val, print_ast_internal, &layer);
 }
 
-void print_exec_text(StringDict *dict) {
-    string_dict_foreach(dict, print_exec_text_wrap);
+void print_ast(StringDict *dict) {
+    string_dict_foreach(dict, print_ast_wrap);
 }
 
 void print_single_result_internal(void *enviroment, const char *name, void *val) {
@@ -475,12 +483,44 @@ void print_scan_result(StringDict *content) {
     string_dict_foreach(content, print_single_result);
 }
 
-void free_single_scan_result(const char *key, void *val) {
+void free_ast_expression(Expression* exp) {
+    switch (exp->expression_type) {
+    case EXPRESSION_CALL:
+        for (int i = 0; exp->expression_call.args[i]; i++) {
+            free_ast_expression(exp->expression_call.args[i]);
+        }
+        free(exp->expression_call.args);
+        break;
+    case EXPRESSION_OPEN_PARANTHESIS_GUARD:
+        printf("fatal internal error detected - %d", __LINE__);
+        exit(1);
+    case EXPRESSION_OPERATOR:
+        free_ast_expression(exp->expression_operator.left);
+        free_ast_expression(exp->expression_operator.right);
+        break;
+    case EXPRESSION_UNARY_OPERATOR:
+        free_ast_expression(exp->expression_operator.left);
+        break;
+    case EXPRESSION_VAR:
+    case EXPRESSION_FIXED_VALUE:
+        break;
+    }
+    free(exp);
+}
+
+void free_ast_statements(Statement** st) {
+    switch ((*st)->statement_type) {
+        default:
+            break;
+    }
+}
+
+void free_ast_item(const char *key, void *val) {
     StackedData *entry = val;
     switch (entry->type) {
     case ENTRY_CLASS:
         free(entry->name);
-        string_dict_foreach(entry->class.class_content, free_single_scan_result);
+        string_dict_foreach(entry->class.class_content, free_ast_item);
         string_dict_destroy(entry->class.class_content);
         for (unsigned int i = 0; i < entry->class.implements_len; i++) {
             free(entry->class.implements[i]);
@@ -494,6 +534,7 @@ void free_single_scan_result(const char *key, void *val) {
     case ENTRY_METHOD:
         free(entry->name);
         free(entry->method.return_type);
+        if (entry->method.exec_text) free_ast_statements(entry->method.exec_text);
         for (unsigned int i = 0; i < entry->method.arg_count; i++) {
             free(entry->method.args[i].name);
             free(entry->method.args[i].type);
@@ -502,13 +543,14 @@ void free_single_scan_result(const char *key, void *val) {
         break;
     case ENTRY_METHOD_TABLE:
         for (unsigned int i = 0; i < entry->method_table.len; i++) {
-            free_single_scan_result(key, entry->method_table.methods[i]);
+            free_ast_item(key, entry->method_table.methods[i]);
         }
         free(entry->method_table.methods);
         break;
     case ENTRY_VARIABLE:
         free(entry->name);
         free(entry->var.type);
+        if (entry->var.exec_text) free_ast_expression(entry->var.exec_text);
         break;
     case ENTRY_ERROR:
         free(entry->name);
@@ -521,9 +563,9 @@ void free_single_scan_result(const char *key, void *val) {
     free(entry);
 }
 
-void free_scan_result(const char *key, void *val) {
+void free_ast(const char *key, void *val) {
     (void)key;
-    string_dict_foreach(val, free_single_scan_result);
+    string_dict_foreach(val, free_ast_item);
     string_dict_destroy(val);
     free(val);
 }
@@ -586,11 +628,13 @@ int main(int argc, char **argv) {
     }
     parse(&general_identifier_dict);
     printf("\n");
-    print_exec_text(&general_identifier_dict);
+    print_ast(&general_identifier_dict);
+    
     for (int i = 0; i < argc - 1; i++) {
         free_tokens(token_lists[i]);
         free(file_contents[i]);
     }
-    string_dict_foreach(&general_identifier_dict, free_scan_result);
+    free(token_lists);
+    string_dict_foreach(&general_identifier_dict, free_ast);
     string_dict_destroy(&general_identifier_dict);
 }

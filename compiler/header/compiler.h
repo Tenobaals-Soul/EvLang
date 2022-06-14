@@ -72,9 +72,9 @@ void make_error(const char * line, unsigned int line_no, unsigned int char_no,
 void make_warning(const char* line, unsigned int line_no, unsigned int char_no, 
         unsigned int len, const char * warning_message, ...);
 
-void free_scan_result(const char* key, void* val);
+void free_ast(const char* key, void* val);
 
 // src\0src\0\0 -> StackedData
-struct StackedData* get_from_ident_dot_seq(StringDict* src, const char* name, TokenList* tokens, int token_index);
+struct StackedData* get_from_ident_dot_seq(StringDict* src, const char* name, TokenList* tokens, int token_index, bool throw);
 
 #endif

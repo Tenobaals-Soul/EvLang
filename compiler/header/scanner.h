@@ -24,7 +24,7 @@ struct Expression {
         EXPRESSION_OPEN_PARANTHESIS_GUARD, EXPRESSION_VAR
     } expression_type;
     union {
-        StackedData* variable;
+        StackedData* expression_variable;
         Token* fixed_value;
         struct {
             Expression* left;
