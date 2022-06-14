@@ -118,8 +118,8 @@ enum parse_number_res parse_binary_number(current_read_data* cr, const char** sr
     }
     ++*src;
     if (!(**src == '0' || **src == '1')) {
-        make_error(cr->line_begin, cr->current_line, ((unsigned long) *src - (unsigned long) cr->line_begin), (unsigned long) *src - (unsigned long) old,
-            "illegal number literal format");
+        make_error(cr->line_begin, cr->current_line, ((unsigned long) *src - (unsigned long) cr->line_begin),
+            (unsigned long) *src - (unsigned long) old, "illegal number literal format");
         return NO_NUMBER;
     }
     long double f_buffer = i_buffer;
@@ -144,8 +144,8 @@ enum parse_number_res parse_octal_number(current_read_data* cr, const char** src
     }
     ++*src;
     if (!(**src >= '0' && **src <= '7')) {
-        make_error(cr->line_begin, cr->current_line, ((unsigned long) *src - (unsigned long) cr->line_begin), (unsigned long) *src - (unsigned long) old + 2,
-            "illegal number literal format");
+        make_error(cr->line_begin, cr->current_line, ((unsigned long) *src - (unsigned long) cr->line_begin),
+            (unsigned long) *src - (unsigned long) old + 2, "illegal number literal format");
         return NO_NUMBER;
     }
     long double f_buffer = i_buffer;
@@ -168,8 +168,8 @@ enum parse_number_res parse_decimal_number(current_read_data* cr, const char** s
     *src = old;
     *f_out = strtold(*src, (void*) src);
     if (old == *src) {
-        make_error(cr->line_begin, cr->current_line, ((unsigned long) *src - (unsigned long) cr->line_begin), (unsigned long) *src - (unsigned long) old,
-            "illegal number literal format");
+        make_error(cr->line_begin, cr->current_line, ((unsigned long) *src - (unsigned long) cr->line_begin),
+            (unsigned long) *src - (unsigned long) old, "illegal number literal format");
         return NO_NUMBER;
     }
     return FLOATING_NUMBER;
@@ -187,8 +187,8 @@ enum parse_number_res parse_hexadecimal_number(current_read_data* cr, const char
     *src = old;
     *f_out = strtold(*src, (void*) src);
     if (old == *src) {
-        make_error(cr->line_begin, cr->current_line, ((unsigned long) *src - (unsigned long) cr->line_begin), (unsigned long) *src - (unsigned long) old,
-            "illegal number literal format");
+        make_error(cr->line_begin, cr->current_line, ((unsigned long) *src - (unsigned long) cr->line_begin),
+            (unsigned long) *src - (unsigned long) old, "illegal number literal format");
         return NO_NUMBER;
     }
     return FLOATING_NUMBER;
@@ -216,12 +216,13 @@ enum parse_number_res parse_number(current_read_data* cr, const char** src, long
 
 static int t_get_number(current_read_data* cr, const char** src, TokenList* list) {
     const char* before = *src;
+    unsigned int char_in_line_before = ((unsigned long) *src - (unsigned long) cr->line_begin);
     long double floating_value_found;
     unsigned long long integer_value_found;
     enum parse_number_res res = parse_number(cr, src, &floating_value_found, &integer_value_found);
     if (res != NO_NUMBER) {
         unsigned long len = ((ulong) *src) - ((ulong) before);
-        list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
+        list->tokens[list->cursor].char_in_line = char_in_line_before;
         list->tokens[list->cursor].line_in_file = cr->current_line;
         list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = len;

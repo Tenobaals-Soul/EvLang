@@ -1,10 +1,10 @@
 class ExampleClass derives example.AnOtherExampleClass {
-    int var, num = 5 * (5 + 3), other_var = 5 * example.ExampleClass.num / 2;
+    int var, num = 5 * (5 + 3), other_var = 5 * example.ExampleClass.subtract(2) / 2;
     int subtract (int a, int b) {
-
+        return a + b;
     }
     int subtract (float a, float b) {
-
+        return a - b
     }
     int add(int a, int b) {
         return a + b;

@@ -34,6 +34,7 @@ struct Expression {
         struct {
             StackedData* call;
             Expression** args;
+            unsigned int arg_count;
         } expression_call;
     };
 };

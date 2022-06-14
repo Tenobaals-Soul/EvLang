@@ -74,6 +74,7 @@ bool append_method(StringDict* class_content, Token* pos, StackedData* entry_fou
     else {
         method_table = malloc(sizeof(StackedData));
         method_table->type = ENTRY_METHOD_TABLE;
+        method_table->name = name;
         method_table->accessability = PUBLIC;
         method_table->method_table.len = 0;
         method_table->method_table.methods = NULL;

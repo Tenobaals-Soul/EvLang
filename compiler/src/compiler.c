@@ -73,7 +73,7 @@ void message_internal(const char *color_code, const char *line, unsigned int lin
 StackedData *get_from_ident_dot_seq(StringDict *src, const char *name, TokenList *tokens, int token_index, bool throw) {
     const char *env = enviroment;
     const char *acs = name;
-    StackedData *found;
+    StackedData* found = NULL;
     int word = 0;
     for (int i = 0; acs[i]; word++, i++) {
         found = src ? string_dict_get(src, acs + i) : NULL;
@@ -324,13 +324,15 @@ void print_ast_internal2(Expression *exp) {
     case EXPRESSION_CALL:
         printf("%s(", exp->expression_call.call->name);
         unsigned int i;
-        for (i = 0; exp->expression_call.args[i]; i++) {
-            print_ast_internal2(exp->expression_call.args[i]);
-        }
-        if (exp->expression_call.args[i]) {
+        if (exp->expression_call.args[0]) {
+            for (i = 0; exp->expression_call.args[i + 1]; i++) {
+                print_ast_internal2(exp->expression_call.args[i]);
+                printf(", ");
+            }
             print_ast_internal2(exp->expression_call.args[i]);
         }
         printf(")");
+        break;
     case EXPRESSION_FIXED_VALUE:
         print_fixed_value(exp->fixed_value);
         break;
@@ -348,6 +350,9 @@ void print_ast_internal2(Expression *exp) {
         break;
     case EXPRESSION_VAR:
         printf("%s", exp->expression_variable ? exp->expression_variable->name : "error-var");
+        break;
+    case EXPRESSION_UNARY_OPERATOR:
+        printf(" -");
         break;
     }
 }
@@ -464,6 +469,7 @@ void print_single_result_internal(void *enviroment, const char *name, void *val)
         make_error(entry->causing->line_content, entry->causing->line_in_file, entry->causing->char_in_line,
                    entry->causing->text_len, entry->name);
         break;
+    case ENTRY_MODULE:
     case ERROR_TYPE:
         printf("detected fatal internal error - error type detected - %d\n", __LINE__);
         exit(1);
@@ -666,6 +672,8 @@ int main(int argc, char **argv) {
     parse(&general_identifier_dict);
     printf("\n");
     print_ast(&general_identifier_dict);
+
+    printf("%s\n", has_errors ? "error free code" : "errors found");
     
     for (int i = 0; i < argc - 1; i++) {
         free_tokens(token_lists[i]);
