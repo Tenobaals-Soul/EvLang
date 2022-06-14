@@ -23,13 +23,9 @@ void set_enviroment(const char *new_enviroment) {
 }
 
 void message_internal(const char *color_code, const char *line, unsigned int line_no,
-                      unsigned int char_no, unsigned int len, const char *message, ...) {
-    char_no++;
+                      unsigned int char_no, unsigned int len, const char *message, va_list l) {
     printf("%s %u:%u ", enviroment, line_no, char_no);
-    va_list l;
-    va_start(l, message);
     vprintf(message, l);
-    va_end(l);
     putchar('\n');
     unsigned int print_len = 0;
     printf("%4d | ", line_no);
@@ -74,17 +70,18 @@ StackedData *get_from_ident_dot_seq(StringDict *src, const char *name, TokenList
     const char *env = enviroment;
     const char *acs = name;
     StackedData *found;
-    for (int i = 0; name[i] || name[i + 1];) {
+    int word = 0;
+    for (int i = 0; name[i] || name[i + 1]; word++) {
         found = string_dict_get(src, acs);
         if (found == NULL) {
             if (throw) {
                 if (!src || src->count == 0) {
-                    Token *t = &tokens->tokens[token_index];
+                    Token *t = &tokens->tokens[token_index + word * 2];
                     make_error(t->line_content, t->line_in_file, t->char_in_line,
                             t->text_len, "%s has no members", env, name + i);
                 }
                 else {
-                    Token *t = &tokens->tokens[token_index];
+                    Token *t = &tokens->tokens[token_index + word * 2];
                     make_error(t->line_content, t->line_in_file, t->char_in_line,
                             t->text_len, "%s has no member %s", env, name + i);
                 }
@@ -100,8 +97,6 @@ StackedData *get_from_ident_dot_seq(StringDict *src, const char *name, TokenList
 
 void make_error(const char *line, unsigned int line_no, unsigned int char_no,
                 unsigned int len, const char *error_message, ...) {
-    printf("%s %u:%u ", enviroment, line_no, char_no);
-    char_no--;
     va_list l;
     va_start(l, error_message);
     message_internal("\033[91m", line, line_no, char_no, len, error_message, l);
@@ -110,8 +105,6 @@ void make_error(const char *line, unsigned int line_no, unsigned int char_no,
 
 void make_warning(const char *line, unsigned int line_no, unsigned int char_no,
                   unsigned int len, const char *warning_message, ...) {
-    printf("%s %u:%u ", enviroment, line_no, char_no);
-    char_no--;
     va_list l;
     va_start(l, warning_message);
     message_internal("\033[91m", line, line_no, char_no, len, warning_message, l);
@@ -603,6 +596,7 @@ int main(int argc, char **argv) {
     string_dict_init(&general_identifier_dict);
     char *file_contents[argc - 1];
     TokenList *token_lists = malloc(sizeof(TokenList) * (argc - 1));
+    bool has_errors = false;
     for (int i = 1; i < argc; i++) {
         if (string_dict_get(&general_identifier_dict, argv[i]))
             continue;
@@ -611,11 +605,10 @@ int main(int argc, char **argv) {
             printf("could not open file \"%s\"", argv[i]);
             exit(1);
         }
+        file_contents[i - 1] = file_content;
         set_enviroment(argv[i]);
         TokenList token_list = lex(file_content);
-        if (token_list.tokens == NULL)
-            continue;
-        file_contents[i - 1] = file_content;
+        token_lists[i - 1] = token_list;
         print_tokens(token_list);
         printf("\n");
         unsigned int index = 0;
@@ -624,7 +617,8 @@ int main(int argc, char **argv) {
             print_scan_result(content);
             string_dict_put(&general_identifier_dict, argv[i], content);
         }
-        token_lists[i - 1] = token_list;
+        if (token_list.has_error)
+            has_errors = true;
     }
     parse(&general_identifier_dict);
     printf("\n");

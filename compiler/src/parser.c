@@ -178,8 +178,26 @@ state parse_exp_found_ident(state_data* data) {
         return on_found_operator_token(data, token);
     case CLOSE_PARANTHESIS_TOKEN:
         return on_found_closing_paranthesis(data, token);
+    case DOT_TOKEN:
+        transition(parse_exp_found_ident_dot);
     default:
         throw_raw_expected(token, "unexpected token");
+        transition(NULL, END_ERROR);
+    }
+}
+
+state parse_exp_found_ident_dot(state_data* data) {
+    Token* token = get_token(data);
+    switch (token->type) {
+    case IDENTIFIER_TOKEN:
+        data->accessor = append_accessor_str(data->accessor, token->identifier);
+        if (get_from_ident_dot_seq(data->local_access_dict, data->accessor, &data->tokens, data->index - 1, false) == NULL &&
+            get_from_ident_dot_seq(data->global_access_dict, data->accessor, &data->tokens, data->index - 1, true) == NULL) {
+            transition(parse_exp_found_ident, END_ERROR);
+        }
+        transition(parse_exp_found_ident, END_FINE);
+    default:
+        throw_raw_expected(token, "expected an identifier");
         transition(NULL, END_ERROR);
     }
 }

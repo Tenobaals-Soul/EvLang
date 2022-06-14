@@ -62,6 +62,7 @@ typedef struct Token {
 typedef struct TokenList {
     Token* tokens;
     unsigned int cursor;
+    bool has_error;
 } TokenList;
 
 void set_enviroment(const char* enviroment);
