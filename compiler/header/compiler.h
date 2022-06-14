@@ -66,6 +66,7 @@ typedef struct TokenList {
 } TokenList;
 
 void set_enviroment(const char* enviroment);
+const char* get_enviroment();
 
 void make_error(const char * line, unsigned int line_no, unsigned int char_no, 
         unsigned int len, const char * error_message, ...);

@@ -9,7 +9,7 @@ struct parse_args {
     bool has_errors;
     StackedData* context;
     TokenList tokens;
-    StringDict* global_access_dict;
+    Stack access_dicts;
 };
 
 typedef struct state_data {
@@ -21,8 +21,8 @@ typedef struct state_data {
     Stack operator_stack;
     char* accessor;
     TokenList tokens;
-    StringDict* global_access_dict;
-    StringDict* local_access_dict;
+    Stack access_dicts;
+    unsigned int accessor_start;
 } state_data;
 
 typedef struct state {
@@ -90,6 +90,15 @@ state parse_exp_found_value(state_data* data);
 state parse_exp_found_ident(state_data* data);
 state parse_exp_found_ident_dot(state_data* data);
 
+
+StackedData* find_by_accessor(Stack* access_dicts, const char* accessor, TokenList* tokens, unsigned int token_index) {
+    for (int i = access_dicts->count; i; i--) {
+        StackedData* found = get_from_ident_dot_seq(access_dicts->data[i - 1], accessor, tokens, token_index, i <= 1);
+        if (found) return found;
+    }
+    return NULL;
+}
+
 state parse_exp_start(state_data* data) {
     Token* token = get_token(data);
     Expression* exp;
@@ -101,11 +110,22 @@ state parse_exp_start(state_data* data) {
         push(&data->value_stack, exp);
         transition(parse_exp_found_value, END_FINE);
     case IDENTIFIER_TOKEN:
-        data->accessor = append_accessor_str(data->accessor, token->identifier);
-        if (get_from_ident_dot_seq(data->local_access_dict, data->accessor, &data->tokens, data->index - 1, false) == NULL &&
-            get_from_ident_dot_seq(data->global_access_dict, data->accessor, &data->tokens, data->index - 1, true) == NULL) {
-            transition(parse_exp_found_ident, END_ERROR);
+        if (data->accessor != NULL) {
+            if (find_by_accessor(&data->access_dicts, data->accessor, &data->tokens, data->accessor_start) == NULL) {
+                while (data->tokens.tokens[data->index].type == DOT_TOKEN || data->tokens.tokens[data->index].type == IDENTIFIER_TOKEN) {
+                    data->index++;
+                }
+                data->index--;
+                Expression* exp = calloc(sizeof(Expression), 1);
+                exp->expression_type = EXPRESSION_VAR;
+                push(&data->value_stack, exp);
+                free(data->accessor);
+                data->accessor = NULL;
+                transition(parse_exp_found_ident, END_ERROR);
+            }
         }
+        if (data->accessor == NULL) data->accessor_start = data->index;
+        data->accessor = append_accessor_str(data->accessor, token->identifier);
         transition(parse_exp_found_ident, END_FINE);
     case OPEN_PARANTHESIS_TOKEN:
         data->paranthesis_layer++;
@@ -169,10 +189,7 @@ state parse_exp_found_ident(state_data* data) {
     case OPERATOR_TOKEN:
         Expression* exp = calloc(sizeof(Expression), 1);
         exp->expression_type = EXPRESSION_VAR;
-        exp->expression_variable = get_from_ident_dot_seq(data->local_access_dict, data->accessor, &data->tokens, data->index - 1, false);
-        if (exp->expression_variable == NULL) {
-            exp->expression_variable = get_from_ident_dot_seq(data->global_access_dict, data->accessor, &data->tokens, data->index - 1, true);
-        }
+        exp->expression_variable = find_by_accessor(&data->access_dicts, data->accessor, &data->tokens, data->accessor_start);
         push(&data->value_stack, exp);
         free(data->accessor);
         return on_found_operator_token(data, token);
@@ -190,11 +207,24 @@ state parse_exp_found_ident_dot(state_data* data) {
     Token* token = get_token(data);
     switch (token->type) {
     case IDENTIFIER_TOKEN:
-        data->accessor = append_accessor_str(data->accessor, token->identifier);
-        if (get_from_ident_dot_seq(data->local_access_dict, data->accessor, &data->tokens, data->index - 1, false) == NULL &&
-            get_from_ident_dot_seq(data->global_access_dict, data->accessor, &data->tokens, data->index - 1, true) == NULL) {
-            transition(parse_exp_found_ident, END_ERROR);
+        if (data->accessor != NULL) {
+            if (find_by_accessor(&data->access_dicts, data->accessor, &data->tokens, data->accessor_start) == NULL) {
+                while (data->tokens.tokens[data->index].type == DOT_TOKEN || data->tokens.tokens[data->index].type == IDENTIFIER_TOKEN) {
+                    data->index++;
+                }
+                data->index--;
+                Expression* exp = calloc(sizeof(Expression), 1);
+                exp->expression_type = EXPRESSION_VAR;
+                push(&data->value_stack, exp);
+                free(data->accessor);
+                data->accessor = NULL;
+                transition(parse_exp_found_ident, END_ERROR);
+            }
         }
+        else {
+            data->accessor_start = data->index;
+        }
+        data->accessor = append_accessor_str(data->accessor, token->identifier);
         transition(parse_exp_found_ident, END_FINE);
     default:
         throw_raw_expected(token, "expected an identifier");
@@ -216,12 +246,11 @@ state parse_exp_found_value(state_data* data) {
     }
 }
 
-Expression* parse_expression(StringDict* global_access_dict, StringDict* local_access_dict, StackedData* method_or_var, struct parse_args* args) {
+Expression* parse_expression(StackedData* method_or_var, struct parse_args* args) {
     state next_state = { parse_exp_start };
     bool error = false;
     state_data data = {0};
-    data.local_access_dict = local_access_dict;
-    data.global_access_dict = global_access_dict;
+    data.access_dicts = args->access_dicts;
     data.index = method_or_var->text_start;
     data.tokens = method_or_var->env_token;
     while (next_state.func) {
@@ -273,10 +302,15 @@ void parse_dict_item(void* env, const char* key, void* val) {
         struct parse_args new_args = {
             .context = st_data,
             .has_errors = false,
-            .global_access_dict = st_data->class.class_content,
             .tokens = st_data->env_token
         };
+        stack_init(&new_args.access_dicts);
+        for (int i = 0; i < args->access_dicts.count; i++) {
+            push(&new_args.access_dicts, args->access_dicts.data[i]);
+        }
+        push(&new_args.access_dicts, st_data->class.class_content);
         parse_with_context(st_data->class.class_content, &new_args);
+        stack_destroy(&new_args.access_dicts);
         args->has_errors |= new_args.has_errors;
         break;
     case ENTRY_ERROR:
@@ -298,7 +332,7 @@ void parse_dict_item(void* env, const char* key, void* val) {
             else {
                 local_access_dict = args->context->class.class_content;
             }
-            st_data->var.exec_text = parse_expression(args->global_access_dict, local_access_dict, st_data, args);
+            st_data->var.exec_text = parse_expression(st_data, args);
         }
         else {
             st_data->var.exec_text = NULL;
@@ -309,20 +343,25 @@ void parse_dict_item(void* env, const char* key, void* val) {
 
 static void parse_with_context_wrapper(void* env, const char* key, void* val) {
     (void) key;
-    parse_with_context(val, env);
+    StackedData* module = val;
+    parse_with_context(module->class.class_content, env);
 }
 
 static inline bool parse_with_context(StringDict* dict_to_parse, struct parse_args* args) {
+    push(&args->access_dicts, dict_to_parse);
     string_dict_complex_foreach(dict_to_parse, parse_dict_item, args);
+    pop(&args->access_dicts);
 }
 
 bool parse(StringDict* global_access_dict) {
     struct parse_args args = {
         .has_errors = false,
         .context = NULL,
-        .global_access_dict = global_access_dict,
         .tokens = NULL
     };
+    stack_init(&args.access_dicts);
+    push(&args.access_dicts, global_access_dict);
     string_dict_complex_foreach(global_access_dict, parse_with_context_wrapper, &args);
+    stack_destroy(&args.access_dicts);
     return args.has_errors;
 }

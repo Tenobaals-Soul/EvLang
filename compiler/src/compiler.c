@@ -22,6 +22,10 @@ void set_enviroment(const char *new_enviroment) {
     }
 }
 
+const char* get_enviroment() {
+    return enviroment;
+}
+
 void message_internal(const char *color_code, const char *line, unsigned int line_no,
                       unsigned int char_no, unsigned int len, const char *message, va_list l) {
     printf("%s %u:%u ", enviroment, line_no, char_no);
@@ -71,26 +75,26 @@ StackedData *get_from_ident_dot_seq(StringDict *src, const char *name, TokenList
     const char *acs = name;
     StackedData *found;
     int word = 0;
-    for (int i = 0; name[i] || name[i + 1]; word++) {
-        found = string_dict_get(src, acs);
+    for (int i = 0; acs[i]; word++, i++) {
+        found = src ? string_dict_get(src, acs + i) : NULL;
         if (found == NULL) {
             if (throw) {
-                if (!src || src->count == 0) {
+                if (!src || src->count == 0) { // found is not a class
                     Token *t = &tokens->tokens[token_index + word * 2];
                     make_error(t->line_content, t->line_in_file, t->char_in_line,
-                            t->text_len, "%s has no members", env, name + i);
+                            t->text_len, "%s has no members", env);
                 }
                 else {
                     Token *t = &tokens->tokens[token_index + word * 2];
                     make_error(t->line_content, t->line_in_file, t->char_in_line,
-                            t->text_len, "%s has no member %s", env, name + i);
+                            t->text_len, "%s is not defined", env, acs + i);
                 }
             }
             return NULL;
         }
         env = name;
-        for (acs = name + i; acs[i]; i++);
-        src = found->type == ENTRY_CLASS ? found->class.class_content : NULL;
+        for (; acs[i]; i++);
+        src = found->type == ENTRY_CLASS || found->type == ENTRY_MODULE ? found->class.class_content : NULL;
     }
     return found;
 }
@@ -265,7 +269,7 @@ void print_tokens(TokenList l) {
             print_fixed_value(&l.tokens[i]);
             break;
         case OPERATOR_TOKEN:
-            printf("<op>");
+            print_operator(l.tokens[i].operator_type);
             break;
         case OPEN_PARANTHESIS_TOKEN:
             printf("(");
@@ -355,6 +359,10 @@ void print_ast_internal(void *env, const char *name, void *val) {
     indent[layer * 4] = 0;
     StackedData *entry = val;
     switch (entry->type) {
+    case ENTRY_MODULE:;
+        printf("module %s with %d entrys:\n", name, ((StringDict*) val)->count);
+        layer++;
+        string_dict_complex_foreach(entry->class.class_content, print_ast_internal, &layer);
     case ENTRY_CLASS:;
         printf("%sclass %s with %d entrys:\n", indent, entry->name, entry->class.class_content->count);
         layer++;
@@ -398,14 +406,9 @@ void print_ast_internal(void *env, const char *name, void *val) {
     }
 }
 
-void print_ast_wrap(const char* key, void* val) {
-    int layer = 1;
-    printf("module %s with %d entrys:\n", key, ((StringDict*) val)->count);
-    string_dict_complex_foreach(val, print_ast_internal, &layer);
-}
-
 void print_ast(StringDict *dict) {
-    string_dict_foreach(dict, print_ast_wrap);
+    int layer = 0;
+    string_dict_complex_foreach(dict, print_ast_internal, &layer);
 }
 
 void print_single_result_internal(void *enviroment, const char *name, void *val) {
@@ -508,12 +511,16 @@ void free_ast_statements(Statement** st) {
     }
 }
 
-void free_ast_item(const char *key, void *val) {
+void free_ast(const char *key, void *val) {
     StackedData *entry = val;
     switch (entry->type) {
+    case ENTRY_MODULE:
+        string_dict_foreach(entry->class.class_content, free_ast);
+        free(entry->class.class_content);
+        break;
     case ENTRY_CLASS:
         free(entry->name);
-        string_dict_foreach(entry->class.class_content, free_ast_item);
+        string_dict_foreach(entry->class.class_content, free_ast);
         string_dict_destroy(entry->class.class_content);
         for (unsigned int i = 0; i < entry->class.implements_len; i++) {
             free(entry->class.implements[i]);
@@ -536,7 +543,7 @@ void free_ast_item(const char *key, void *val) {
         break;
     case ENTRY_METHOD_TABLE:
         for (unsigned int i = 0; i < entry->method_table.len; i++) {
-            free_ast_item(key, entry->method_table.methods[i]);
+            free_ast(key, entry->method_table.methods[i]);
         }
         free(entry->method_table.methods);
         break;
@@ -554,13 +561,6 @@ void free_ast_item(const char *key, void *val) {
         break;
     }
     free(entry);
-}
-
-void free_ast(const char *key, void *val) {
-    (void)key;
-    string_dict_foreach(val, free_ast_item);
-    string_dict_destroy(val);
-    free(val);
 }
 
 char *fmalloc(const char *filename) {
@@ -582,16 +582,51 @@ char *fmalloc(const char *filename) {
     return file_content;
 }
 
-int main(int argc, char **argv) {
+void verify_files(int argc, char** argv) {
     bool exit_err = false;
     for (int i = 1; i < argc; i++) {
         if (access(argv[i], R_OK)) {
             printf("file \"%s\" could not be found\n", argv[i]);
             exit_err = true;
         }
+        int dots_found = 0;
+        if (!isalpha(argv[i][0])) {
+            exit_err = true;
+        }
+        else {
+            for (int j = 1; argv[i][j]; j++) {
+                if (isalnum(argv[i][j]))
+                    continue;
+                else if (argv[i][j] == '.') {
+                    if (dots_found > 0) {
+                        printf("filename \"%s\" contains more than one dot", argv[i]);
+                        exit_err = true;
+                        break;
+                    }
+                    dots_found++;
+                }
+                else {
+                    printf("filename \"%s\" contains an illegal character", argv[i]);
+                    exit_err = true;
+                    break;
+                }
+            }
+        }
     }
     if (exit_err)
         exit(0);
+}
+
+int strcreplace(char* str, char search, char replace, int len) {
+    for (int i = 0; i < len; i++) {
+        if (str[i] == search) str[i] = replace;
+        if (str[i] == '\0') return i;
+    }
+    return len;
+}
+
+int main(int argc, char **argv) {
+    verify_files(argc, argv);
     StringDict general_identifier_dict;
     string_dict_init(&general_identifier_dict);
     char *file_contents[argc - 1];
@@ -612,10 +647,15 @@ int main(int argc, char **argv) {
         print_tokens(token_list);
         printf("\n");
         unsigned int index = 0;
-        StringDict *content = scan_content(token_list, &index);
+        StringDict* content = scan_content(token_list, &index);
+        StackedData* content_wrapper = calloc(sizeof(StackedData), 1);
+        content_wrapper->class.class_content = content;
+        content_wrapper->type = ENTRY_MODULE;
         if (content) {
             print_scan_result(content);
-            string_dict_put(&general_identifier_dict, argv[i], content);
+            int len = strcreplace(enviroment, '.', '\0', sizeof(enviroment));
+            string_dict_put(&general_identifier_dict, enviroment, content_wrapper);
+            strcreplace(enviroment, '\0', '.', len);
         }
         if (token_list.has_error)
             has_errors = true;
