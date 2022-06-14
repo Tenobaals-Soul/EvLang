@@ -363,10 +363,12 @@ void print_ast_internal(void *env, const char *name, void *val) {
         printf("module %s with %d entrys:\n", name, ((StringDict*) val)->count);
         layer++;
         string_dict_complex_foreach(entry->class.class_content, print_ast_internal, &layer);
+        break;
     case ENTRY_CLASS:;
         printf("%sclass %s with %d entrys:\n", indent, entry->name, entry->class.class_content->count);
         layer++;
         string_dict_complex_foreach(entry->class.class_content, print_ast_internal, &layer);
+        break;
     case ENTRY_METHOD:
         printf("%s%s %s(", indent, entry->method.return_type, name);
         unsigned int i;
