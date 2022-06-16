@@ -266,26 +266,7 @@ state on_found_closing_paranthesis(state_data* data, Token* token) {
 
 Expression* parse_expression(StackedData* method_or_var, struct parse_args* args, bool throw);
 
-state on_function_exec(state_data* data) {
-    if (data->st_data == NULL) {
-        throw_raw_expected(&data->tokens.tokens[data->index], "unexpected token");
-        transition(NULL, END_ERROR);
-    }
-    Expression* call;
-    if (data->pending_func_call == NULL) {
-        call = calloc(sizeof(Expression), 1);
-        call->expression_type = EXPRESSION_CALL;
-        call->expression_call.call = find_by_accessor(&data->access_dicts, data->accessor, &data->tokens, data->accessor_start);
-        data->accessor = NULL;
-        call->expression_call.args = malloc(sizeof(Expression*));
-        call->expression_call.arg_count = 0;
-        call->expression_call.args[0] = NULL;
-        data->pending_func_call = call;
-    }
-    else {
-        call = data->pending_func_call;
-    }
-    data->index++;
+Expression* sub_expression(state_data* data) {
     struct parse_args new_args = {
         .has_errors = false,
         .tokens = data->tokens,
@@ -294,32 +275,65 @@ state on_function_exec(state_data* data) {
     };
     Expression* argument = parse_expression(data->st_data, &new_args, false);
     data->index = new_args.index - 1;
-    if (argument == NULL) {
+    return argument;
+}
+
+static inline Expression* new_call(state_data* data) {
+    Expression* call = calloc(sizeof(Expression), 1);
+    call->expression_type = EXPRESSION_CALL;
+    call->expression_call.call = find_by_accessor(&data->access_dicts, data->accessor, &data->tokens, data->accessor_start);
+    data->accessor = NULL;
+    call->expression_call.args = malloc(sizeof(Expression*));
+    call->expression_call.arg_count = 0;
+    call->expression_call.args[0] = NULL;
+    data->pending_func_call = call;
+    return call;
+}
+
+state function_arg_recover(state_data* data) {
+    if (data->tokens.tokens[data->index].type == CLOSE_PARANTHESIS_TOKEN) {
+        push(&data->value_stack, data->pending_func_call);
+        transition(parse_exp_found_value, END_FINE);
+    }
+    for (int i = 0; data->pending_func_call->expression_call.args[0]; i++) {
+        free(data->pending_func_call->expression_call.args[i]);
+    }
+    while (data->index < data->end_on_index) {
+        data->index++;
         if (data->tokens.tokens[data->index].type == CLOSE_PARANTHESIS_TOKEN) {
             push(&data->value_stack, data->pending_func_call);
-            transition(parse_exp_found_value, END_FINE);
+            data->pending_func_call = NULL;
+            transition(parse_exp_found_value, END_ERROR | END_FINE);
         }
-        for (int i = 0; data->pending_func_call->expression_call.args[0]; i++) {
-            free(data->pending_func_call->expression_call.args[i]);
+        if (data->tokens.tokens[data->index].type == END_TOKEN) {
+            free(data->pending_func_call->expression_call.args);
+            free(data->pending_func_call);
+            data->pending_func_call = NULL;
+            transition(NULL, END_ERROR);
         }
-        while (data->index < data->end_on_index) {
-            data->index++;
-            if (data->tokens.tokens[data->index].type == CLOSE_PARANTHESIS_TOKEN) {
-                push(&data->value_stack, data->pending_func_call);
-                data->pending_func_call = NULL;
-                transition(parse_exp_found_value, END_ERROR | END_FINE);
-            }
-            if (data->tokens.tokens[data->index].type == END_TOKEN) {
-                free(data->pending_func_call->expression_call.args);
-                free(data->pending_func_call);
-                data->pending_func_call = NULL;
-                transition(NULL, END_ERROR);
-            }
-            if (data->tokens.tokens[data->index].type == SEPERATOR_TOKEN) {
-                transition(parse_exp_arg_ended, NO_ADVANCE);
-            }
+        if (data->tokens.tokens[data->index].type == SEPERATOR_TOKEN) {
+            transition(parse_exp_arg_ended, NO_ADVANCE);
         }
+    }
+    transition(NULL, END_ERROR);
+}
+
+state on_function_exec(state_data* data) {
+    if (data->st_data == NULL) {
+        throw_raw_expected(&data->tokens.tokens[data->index], "unexpected token");
         transition(NULL, END_ERROR);
+    }
+    Expression* call;
+    if (data->pending_func_call == NULL) {
+        call = new_call(data);
+    }
+    else {
+        call = data->pending_func_call;
+    }
+    data->index++;
+    Expression* argument = sub_expression(data);
+    if (argument == NULL) {
+        return function_arg_recover(data);
     }
     else if (call->expression_call.args) {
         call->expression_call.args[call->expression_call.arg_count] = argument;

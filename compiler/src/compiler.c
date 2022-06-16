@@ -669,11 +669,11 @@ int main(int argc, char **argv) {
         if (token_list.has_error)
             has_errors = true;
     }
-    parse(&general_identifier_dict);
+    has_errors |= parse(&general_identifier_dict);
     printf("\n");
     print_ast(&general_identifier_dict);
 
-    printf("%s\n", has_errors ? "error free code" : "errors found");
+    printf("%s\n", has_errors ? "errors found" : "error free code");
     
     for (int i = 0; i < argc - 1; i++) {
         free_tokens(token_lists[i]);
