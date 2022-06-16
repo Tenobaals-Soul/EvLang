@@ -11,10 +11,17 @@ RUNTIME_EXEC := evlr
 RUNTIME_BUILD_DIR := out/runtime
 RUNTIME_SRC_DIR := runtime/src
 
-all: $(COMPILER_EXEC)
+DEBUG_FLAGS = -DDEBUG -g
 
-debug: CFLAGS = -DDEBUG -g
-debug: $(COMPILER_EXEC)
+
+all: remove_executables $(COMPILER_EXEC) $(RUNTIME_EXEC)
+
+remove_executables:
+	@rm -f $(COMPILER_EXEC)
+	@rm -f $(RUNTIME_EXEC)
+set_debug: $(eval CFLAGS += $(DEBUG_FLAGS))
+
+debug: set_debug all
 
 COMPILER_SRCS := $(shell find $(COMPILER_SRC_DIR) -name '*.c')
 COMPILER_OBJS := $(COMPILER_SRCS:$(COMPILER_SRC_DIR)/%=$(COMPILER_BUILD_DIR)/%.o)
@@ -34,15 +41,13 @@ $(COMPILER_EXEC): $(COMPILER_OBJS)
 $(RUNTIME_EXEC): $(RUNTIME_OBJS)
 	$(CC) $(CFLAGS) $(RUNTIME_OBJS) -o $@ $(LDFLAGS)
 
-# Build step for C source
 $(COMPILER_BUILD_DIR)/%.c.o: $(COMPILER_SRC_DIR)/%.c
 	@mkdir -p $(COMPILER_BUILD_DIR)
-	$(CC) $(CFLAGS) $(COMPILER_INC_FLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(DEBUG_FLAGS) $(COMPILER_INC_FLAGS) -c $< -o $@
 
-# Build step for C source
 $(RUNTIME_BUILD_DIR)/%.c.o: $(RUNTIME_SRC_DIR)/%.c
 	@mkdir -p $(RUNTIME_BUILD_DIR)
-	$(CC) $(CFLAGS) $(RUNTIME_INC_FLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(DEBUG_FLAGS) $(RUNTIME_INC_FLAGS) -c $< -o $@
 
 .PHONY: clean debug
 

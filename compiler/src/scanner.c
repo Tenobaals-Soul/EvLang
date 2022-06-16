@@ -8,6 +8,7 @@
 #include<stdio.h>
 #include<memory.h>
 #include<stdarg.h>
+#include<stack.h>
 
 typedef struct state_data {
     StringDict* dest;
@@ -104,28 +105,10 @@ static void throw_unexpected_token(Token* token_with_error) {
         "unexpected token");
 }
 
-static void throw_expected_class(Token* token_with_error) {
-    make_error(token_with_error->line_content, token_with_error->line_in_file,
-        token_with_error->char_in_line, token_with_error->text_len,
-        "expected a class here");
-}
-
-static void throw_expected_class_or_method(Token* token_with_error) {
-    make_error(token_with_error->line_content, token_with_error->line_in_file,
-        token_with_error->char_in_line, token_with_error->text_len,
-        "expected a \"class\" keyword or a type for a method or a variale");
-}
-
 static void throw_perhaps_missing_assign(Token* token_with_error) {
     make_error(token_with_error->line_content, token_with_error->line_in_file,
         token_with_error->char_in_line, token_with_error->text_len,
         "expected a \"=\", \"(\" or a \";\", you are propably missing a \"=\" between your variable and your value");
-}
-
-static void throw_no_semicolon(Token* token_with_error) {
-    make_error(token_with_error->line_content, token_with_error->line_in_file,
-        token_with_error->char_in_line, token_with_error->text_len,
-        "missing \";\"");
 }
 
 static void throw_unexpected_end(Token* token_with_error) {
@@ -497,8 +480,8 @@ char inverse_bracket(char bracket) {
 
 state var_got_assigned(state_data* data) {
     data->st_data->text_start = data->index;
-    int layer = 0;
-    char type = 0;
+    Stack type_stack;
+    stack_init(&type_stack);
     while (true) {
         if (data->index >= data->token_list.cursor) {
             data->index--;
@@ -506,78 +489,61 @@ state var_got_assigned(state_data* data) {
             transition(scan_class);
         }
         Token* token = get_token(data);
+        char type = (unsigned long) peek(&type_stack);
         switch (token->type) {
         case END_TOKEN:
             data->st_data->text_end = data->index;
             flush_stacked_data(data);
-            if (layer == 0) transition(scan_class);
+            if (type_stack.count == 0) transition(scan_class);
+            if (type != '{') {
+                throw_raw_expected(token, "you are missing a %c", inverse_bracket(type));
+            }
             break;
         case OPEN_BLOCK_TOKEN:
-            if (type) {
-                throw_raw_expected(token, "%c expected", inverse_bracket(type));
-                return skip(data);
-            }
-            type = '{';
-            layer++;
+            push(&type_stack, (void*) (unsigned long) '{');
             break;
         case CLOSE_BLOCK_TOKEN:
             if (type != '{') {
                 throw_raw_expected(token, "%c expected", inverse_bracket(type));
                 return skip(data);
             }
-            layer--;
-            if (layer == 0) type = 0;
-            else if (layer < 0) {
+            if (pop(&type_stack) == NULL) {
                 throw_raw_expected(token, "unexpected %c", inverse_bracket(type));
                 return skip(data);
             }
             break;
         case OPEN_INDEX_TOKEN:
-            if (type) {
-                throw_raw_expected(token, "%c expected", inverse_bracket(type));
-                return skip(data);
-            }
-            type = '[';
-            layer++;
+            push(&type_stack, (void*) (unsigned long) '[');
             break;
         case CLOSE_INDEX_TOKEN:
             if (type != '[') {
                 throw_raw_expected(token, "%c expected", inverse_bracket(type));
                 return skip(data);
             }
-            layer--;
-            if (layer == 0) type = 0;
-            else if (layer < 0) {
+            if (pop(&type_stack) == NULL) {
                 throw_raw_expected(token, "unexpected %c", inverse_bracket(type));
                 return skip(data);
             }
             break;
         case OPEN_PARANTHESIS_TOKEN:
-            if (type) {
-                throw_raw_expected(token, "%c expected", inverse_bracket(type));
-                return skip(data);
-            }
-            type = '(';
-            layer++;
+            push(&type_stack, (void*) (unsigned long) '(');
             break;
         case CLOSE_PARANTHESIS_TOKEN:
             if (type != '(') {
                 throw_raw_expected(token, "%c expected", inverse_bracket(type));
                 return skip(data);
             }
-            layer--;
-            if (layer == 0) type = 0;
-            else if (layer < 0) {
+            if (pop(&type_stack) == NULL) {
                 throw_raw_expected(token, "unexpected %c", inverse_bracket(type));
                 return skip(data);
             }
             break;
         case SEPERATOR_TOKEN:;
-            StackedData* old_entry = data->st_data;
-            flush_stacked_data(data);
-            *data->st_data = *old_entry;
-            data->st_data->var.type = strmcpy(old_entry->var.type);
-            if (layer == 0) {
+            if (type_stack.count == 0) {
+                StackedData* old_entry = data->st_data;
+                flush_stacked_data(data);
+                *data->st_data = *old_entry;
+                data->st_data->var.type = strmcpy(old_entry->var.type);
                 old_entry->text_end = data->index;
                 transition(scan_class_found_type_no_method);
             }

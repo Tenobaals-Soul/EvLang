@@ -324,14 +324,25 @@ static int try_extract_operator(current_read_data * cr, const char ** src, Token
     if (make_operator(cr, src, list, SUBTRACT_OPERATOR, "-")) return 1;
     if (make_operator(cr, src, list, MULTIPLY_OPERATOR, "*")) return 1;
     if (make_operator(cr, src, list, DIVIDE_OPERATOR, "/")) return 1;
+    if (make_operator(cr, src, list, LEFT_SHIFT_OPERATOR, "<<")) return 1;
+    if (make_operator(cr, src, list, RIGHT_SHIFT_OPERATOR, ">>")) return 1;
+    if (make_operator(cr, src, list, BINARY_XOR_OPERATOR, "^")) return 1;
+    if (make_operator(cr, src, list, BINARY_NOT_OPERATOR, "~")) return 1;
+    if (make_operator(cr, src, list, BINARY_OR_OPERATOR, "|")) return 1;
+    if (make_operator(cr, src, list, BINARY_AND_OPERATOR, "&")) return 1;
+
     if (make_operator(cr, src, list, EQUALS_OPERATOR, "==")) return 1;
     if (make_operator(cr, src, list, SMALLER_THAN_OPERATOR, "<")) return 1;
     if (make_operator(cr, src, list, GREATER_THAN_OPERATOR, "<=")) return 1;
     if (make_operator(cr, src, list, SMALLER_EQUAL_OPERATOR, ">")) return 1;
     if (make_operator(cr, src, list, GREATER_EQUAL_OPERATOR, ">=")) return 1;
     if (make_operator(cr, src, list, NOT_EQUAL_OPERATOR, "!=")) return 1;
-    if (make_operator(cr, src, list, LEFT_SHIFT_OPERATOR, "<<")) return 1;
-    if (make_operator(cr, src, list, RIGHT_SHIFT_OPERATOR, ">>")) return 1;
+    if (make_operator(cr, src, list, BOOL_NOT_OPERATOR, "not")) return 1;
+    if (make_operator(cr, src, list, BOOL_OR_OPERATOR, "or")) return 1;
+    if (make_operator(cr, src, list, BOOL_AND_OPERATOR, "and")) return 1;
+    if (make_operator(cr, src, list, BOOL_NOT_OPERATOR, "!")) return 1;
+    if (make_operator(cr, src, list, BOOL_OR_OPERATOR, "||")) return 1;
+    if (make_operator(cr, src, list, BOOL_AND_OPERATOR, "&&")) return 1;
     return 0;
 }
 
