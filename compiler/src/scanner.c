@@ -240,9 +240,10 @@ state scan_class_found_static(state_data* data) {
     case K_CLASS_TOKEN:
         data->st_data->type = ENTRY_CLASS;
         transition(scan_class_found_class_keyword);
-    case IDENTIFIER_TOKEN:
-        data->st_data->var.type = strmcpy(token->identifier);
-        data->st_data->method.return_type = strmcpy(token->identifier);
+    case IDENTIFIER_TOKEN:;
+        char* type = strmcpy(token->identifier);
+        data->st_data->var.type = type;
+        data->st_data->method.return_type = type;
         transition(scan_class_found_type);
     default:
         throw_unexpected_token(token);
@@ -486,6 +487,7 @@ state var_got_assigned(state_data* data) {
         if (data->index >= data->token_list.cursor) {
             data->index--;
             data->st_data->text_end = data->index;
+            stack_destroy(&type_stack);
             transition(scan_class);
         }
         Token* token = get_token(data);
@@ -494,7 +496,10 @@ state var_got_assigned(state_data* data) {
         case END_TOKEN:
             data->st_data->text_end = data->index;
             flush_stacked_data(data);
-            if (type_stack.count == 0) transition(scan_class);
+            if (type_stack.count == 0) {
+                stack_destroy(&type_stack);
+                transition(scan_class);
+            }
             if (type != '{') {
                 throw_raw_expected(token, "you are missing a %c", inverse_bracket(type));
             }
@@ -505,10 +510,12 @@ state var_got_assigned(state_data* data) {
         case CLOSE_BLOCK_TOKEN:
             if (type != '{') {
                 throw_raw_expected(token, "%c expected", inverse_bracket(type));
+                stack_destroy(&type_stack);
                 return skip(data);
             }
             if (pop(&type_stack) == NULL) {
                 throw_raw_expected(token, "unexpected %c", inverse_bracket(type));
+                stack_destroy(&type_stack);
                 return skip(data);
             }
             break;
@@ -518,10 +525,12 @@ state var_got_assigned(state_data* data) {
         case CLOSE_INDEX_TOKEN:
             if (type != '[') {
                 throw_raw_expected(token, "%c expected", inverse_bracket(type));
+                stack_destroy(&type_stack);
                 return skip(data);
             }
             if (pop(&type_stack) == NULL) {
                 throw_raw_expected(token, "unexpected %c", inverse_bracket(type));
+                stack_destroy(&type_stack);
                 return skip(data);
             }
             break;
@@ -531,10 +540,12 @@ state var_got_assigned(state_data* data) {
         case CLOSE_PARANTHESIS_TOKEN:
             if (type != '(') {
                 throw_raw_expected(token, "%c expected", inverse_bracket(type));
+                stack_destroy(&type_stack);
                 return skip(data);
             }
             if (pop(&type_stack) == NULL) {
                 throw_raw_expected(token, "unexpected %c", inverse_bracket(type));
+                stack_destroy(&type_stack);
                 return skip(data);
             }
             break;
@@ -545,6 +556,7 @@ state var_got_assigned(state_data* data) {
                 *data->st_data = *old_entry;
                 data->st_data->var.type = strmcpy(old_entry->var.type);
                 old_entry->text_end = data->index;
+                stack_destroy(&type_stack);
                 transition(scan_class_found_type_no_method);
             }
         default:

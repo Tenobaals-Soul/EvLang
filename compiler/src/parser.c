@@ -228,6 +228,7 @@ state on_found_operator_token(state_data* data, Token* token) {
         top->expression_operator.right = val2;
         push(&data->value_stack, top);
     }
+    if (top) push(&data->operator_stack, top);
     Expression* operator = calloc(sizeof(Expression), 1);
     operator->expression_type = EXPRESSION_OPERATOR;
     operator->expression_operator.operator = token->operator_type;
@@ -249,7 +250,8 @@ state on_found_closing_paranthesis(state_data* data, Token* token) {
         data->paranthesis_layer--;
     }
     Expression* top = NULL;
-    while ((top = pop(&data->operator_stack)) && top->expression_type != EXPRESSION_OPEN_PARANTHESIS_GUARD) {
+    while ((top = pop(&data->operator_stack)) &&
+            (top->expression_type != EXPRESSION_OPEN_PARANTHESIS_GUARD || token == NULL)) {
         Expression* val2 = pop(&data->value_stack);
         Expression* val1 = pop(&data->value_stack);
         if (val1 == NULL || val2 == NULL) {
@@ -282,6 +284,7 @@ static inline Expression* new_call(state_data* data) {
     Expression* call = calloc(sizeof(Expression), 1);
     call->expression_type = EXPRESSION_CALL;
     call->expression_call.call = find_by_accessor(&data->access_dicts, data->accessor, &data->tokens, data->accessor_start);
+    free(data->accessor);
     data->accessor = NULL;
     call->expression_call.args = malloc(sizeof(Expression*));
     call->expression_call.arg_count = 0;
@@ -295,6 +298,7 @@ state function_arg_recover(state_data* data) {
         push(&data->value_stack, data->pending_func_call);
         transition(parse_exp_found_value, END_FINE);
     }
+    throw_raw_expected(&data->tokens.tokens[data->index], "expected an expression");
     for (int i = 0; data->pending_func_call->expression_call.args[0]; i++) {
         free(data->pending_func_call->expression_call.args[i]);
     }
@@ -312,7 +316,7 @@ state function_arg_recover(state_data* data) {
             transition(NULL, END_ERROR);
         }
         if (data->tokens.tokens[data->index].type == SEPERATOR_TOKEN) {
-            transition(parse_exp_arg_ended, NO_ADVANCE);
+            transition(parse_exp_arg_ended, NO_ADVANCE | END_ERROR);
         }
     }
     transition(NULL, END_ERROR);
@@ -352,6 +356,7 @@ state parse_exp_found_ident(state_data* data) {
         exp->expression_variable = find_by_accessor(&data->access_dicts, data->accessor, &data->tokens, data->accessor_start);
         push(&data->value_stack, exp);
         free(data->accessor);
+        data->accessor = NULL;
         return on_found_operator_token(data, token);
     case CLOSE_PARANTHESIS_TOKEN:
         return on_found_closing_paranthesis(data, token);
@@ -448,11 +453,13 @@ Expression* parse_expression(StackedData* method_or_var, struct parse_args* args
             else {
                 throw_unexpected_end(&args->tokens.tokens[data.index - 1]);
                 error = true;
+                args->has_errors = true;
                 break;
             }
         }
         next_state = next_state.func(&data);
         if (data.flags & END_ERROR) {
+            args->has_errors = true;
             error = true;
         }
         if (!(data.flags & NO_ADVANCE)) {

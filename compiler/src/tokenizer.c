@@ -14,15 +14,27 @@ unsigned long advance(TokenList * list, unsigned long capacity) {
     return capacity;
 }
 
-char* read_next_identifier(const char * src, unsigned long * len) {
+typedef struct current_read_data {
+    bool error;
+    const char* line_begin;
+    unsigned int current_line;
+} current_read_data;
+
+char* read_next_identifier(current_read_data* cr, const char* src, unsigned long* len) {
     *len = 0;
+    bool weird_characters = false;
     if (isalpha(*src) || *src == '_') {
-        while (isalpha(src[*len]) || src[*len] == '_' || isdigit(src[*len])) {
+        while (isalpha(src[*len]) || src[*len] == '_' || isdigit(src[*len]) || src[*len] < 0) {
+            if (!isascii(src[*len])) weird_characters = true;
             ++*len;
         }
-        char * found = malloc(*len + 1);
+        char* found = malloc(*len + 1);
         memcpy(found, src, *len);
         found[*len] = 0;
+        if (weird_characters) {
+            make_warning(cr->line_begin, cr->current_line, ((unsigned long) src - (unsigned long) cr->line_begin), 
+                    *len, "non ascii character in identifier");
+        }
         return found;
     }
     else {
@@ -30,13 +42,7 @@ char* read_next_identifier(const char * src, unsigned long * len) {
     }
 }
 
-typedef struct current_read_data {
-    bool error;
-    const char * line_begin;
-    unsigned int current_line;
-} current_read_data;
-
-int try_extract_end(current_read_data * cr, const char ** src, TokenList * list) {
+int try_extract_end(current_read_data* cr, const char** src, TokenList* list) {
     if (**src == ';') {
         ++*src;
         list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
@@ -91,7 +97,7 @@ void t_get_keyword_or_identifier(char* identifier, unsigned long len, current_re
 
 int try_extract_identifier_or_keyword(current_read_data* cr, StringDict* dict, const char** src, TokenList* list) {
     unsigned long len;
-    char* identifier = read_next_identifier(*src, &len);
+    char* identifier = read_next_identifier(cr, *src, &len);
     if (identifier) {
         if (!t_get_bool(identifier, len, cr, list, src)) {
             t_get_keyword_or_identifier(identifier, len, cr, dict, list, src);
@@ -426,7 +432,7 @@ unsigned int t_err(current_read_data* cr, const char** src) {
     }
     char * str_buffer = malloc(len * 4 + 1);
     for (unsigned int i = 0; i < len; i++) {
-        if (isprint((*src)[i])) {
+        if (isprint((*src)[i]) || (*src)[i] < 0) {
             str_buffer[i + off] = (*src)[i];
         }
         else {

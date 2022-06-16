@@ -26,25 +26,25 @@ const char* get_enviroment() {
     return enviroment;
 }
 
-void message_internal(const char *color_code, const char *line, unsigned int line_no,
-                      unsigned int char_no, unsigned int len, const char *message, va_list l) {
-    printf("%s %u:%u ", enviroment, line_no, char_no);
+void message_internal(const char* color_code, const char* line, const char* source, unsigned int line_no,
+                      unsigned int char_no, unsigned int len, const char* message, va_list l) {
+    printf("%s %u:%u %s%s%s: ", enviroment, line_no, char_no, color_code, source, "\033[0m");
     vprintf(message, l);
-    putchar('\n');
+    printf("\n");
     unsigned int print_len = 0;
     printf("%4d | ", line_no);
     unsigned int i = 0;
     for (; line[i] && line[i] != '\n' && i < char_no; i++) {
         if (!iscntrl(line[i])) {
             putchar(line[i]);
-            print_len += isprint(line[i]) ? 1 : 0;
+            print_len += (isprint(line[i]) || line[i] & (1 << 6));
         }
     }
     printf("%s", color_code);
     for (; line[i] && line[i] != '\n' && i < char_no + len; i++) {
         if (!iscntrl(line[i])) {
             putchar(line[i]);
-            print_len += isprint(line[i]) ? 1 : 0;
+            print_len += (isprint(line[i]) || line[i] & (1 << 6));
         }
     }
     printf("\033[0m");
@@ -103,7 +103,7 @@ void make_error(const char *line, unsigned int line_no, unsigned int char_no,
                 unsigned int len, const char *error_message, ...) {
     va_list l;
     va_start(l, error_message);
-    message_internal("\033[91m", line, line_no, char_no, len, error_message, l);
+    message_internal("\033[31;1m", line, "error", line_no, char_no, len, error_message, l);
     va_end(l);
 }
 
@@ -111,12 +111,12 @@ void make_warning(const char *line, unsigned int line_no, unsigned int char_no,
                   unsigned int len, const char *warning_message, ...) {
     va_list l;
     va_start(l, warning_message);
-    message_internal("\033[91m", line, line_no, char_no, len, warning_message, l);
+    message_internal("\033[93m", line, "warning", line_no, char_no, len, warning_message, l);
     va_end(l);
 }
 
 // "src\0\0", "append\0" -> "src\0append\0\0"
-char *append_accessor_str(char *src, char *append) {
+char* append_accessor_str(char *src, char *append) {
     int i = 0;
     if (src) {
         for (; src[i] || src[i + 1]; i++);
@@ -131,8 +131,7 @@ char *append_accessor_str(char *src, char *append) {
 
 void print_accessor_str(char *accstr) {
     int len;
-    for (len = 0; accstr[len] || accstr[len + 1]; len++)
-        ;
+    for (len = 0; accstr[len] || accstr[len + 1]; len++);
     char *buffer = malloc(len + 1);
     for (int i = 0; i < len; i++) {
         buffer[i] = accstr[i] ? accstr[i] : '.';
@@ -185,6 +184,19 @@ void print_operator(BasicOperator operator) {
     case LEFT_SHIFT_OPERATOR:
         printf("<<");
         break;
+    case BINARY_OR_OPERATOR:
+        printf("|");
+        break;
+    case BINARY_AND_OPERATOR:
+        printf("&");
+        break;
+    case BINARY_XOR_OPERATOR:
+        printf("^");
+        break;
+    case BINARY_NOT_OPERATOR:
+        printf("~");
+        break;
+
     case EQUALS_OPERATOR:
         printf("==");
         break;
@@ -202,6 +214,15 @@ void print_operator(BasicOperator operator) {
         break;
     case NOT_EQUAL_OPERATOR:
         printf("!=");
+        break;
+    case BOOL_OR_OPERATOR:
+        printf("or");
+        break;
+    case BOOL_AND_OPERATOR:
+        printf("and");
+        break;
+    case BOOL_NOT_OPERATOR:
+        printf("not");
         break;
     default:
         printf("detected fatal internal error - error type detected - %d\n", __LINE__);
@@ -365,7 +386,7 @@ void print_ast_internal(void *env, const char *name, void *val) {
     StackedData *entry = val;
     switch (entry->type) {
     case ENTRY_MODULE:;
-        printf("module %s with %d entrys:\n", name, ((StringDict*) val)->count);
+        printf("module %s with %d entrys:\n", name, entry->class.class_content->count);
         layer++;
         string_dict_complex_foreach(entry->class.class_content, print_ast_internal, &layer);
         break;
@@ -662,6 +683,7 @@ int main(int argc, char **argv) {
         content_wrapper->type = ENTRY_MODULE;
         if (content) {
             print_scan_result(content);
+            printf("\n");
             int len = strcreplace(enviroment, '.', '\0', sizeof(enviroment));
             string_dict_put(&general_identifier_dict, enviroment, content_wrapper);
             strcreplace(enviroment, '\0', '.', len);
@@ -670,7 +692,6 @@ int main(int argc, char **argv) {
             has_errors = true;
     }
     has_errors |= parse(&general_identifier_dict);
-    printf("\n");
     print_ast(&general_identifier_dict);
 
     printf("%s\n", has_errors ? "errors found" : "error free code");

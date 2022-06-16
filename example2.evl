@@ -1,0 +1,5 @@
+class ExampleLib {
+    public static void init(String text) {
+
+    }
+}
