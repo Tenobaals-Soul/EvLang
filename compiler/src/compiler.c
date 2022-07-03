@@ -341,6 +341,10 @@ void free_tokens(TokenList token_list) {
 }
 
 void print_ast_internal2(Expression *exp) {
+    if (exp == NULL) {
+        printf("?");
+        return;
+    }
     switch (exp->expression_type) {
     case EXPRESSION_CALL:
         if (exp->expression_call.call == NULL) {
@@ -382,6 +386,11 @@ void print_ast_internal2(Expression *exp) {
         print_ast_internal2(exp->expression_operator.left);
         printf(")");
         break;
+    case EXPRESSION_INDEX:
+        print_ast_internal2(exp->expression_index.from);
+        printf("[");
+        print_ast_internal2(exp->expression_index.key);
+        printf("]");
     }
 }
 
@@ -516,6 +525,7 @@ void print_scan_result(StringDict *content) {
 }
 
 void free_ast_expression(Expression* exp) {
+    if (exp == NULL) return;
     switch (exp->expression_type) {
     case EXPRESSION_CALL:
         for (int i = 0; exp->expression_call.args[i]; i++) {
@@ -527,12 +537,15 @@ void free_ast_expression(Expression* exp) {
         printf("fatal internal error detected - %d", __LINE__);
         exit(1);
     case EXPRESSION_OPERATOR:
-        free_ast_expression(exp->expression_operator.left);
-        free_ast_expression(exp->expression_operator.right);
+        if (exp->expression_operator.left) free_ast_expression(exp->expression_operator.left);
+        if (exp->expression_operator.right) free_ast_expression(exp->expression_operator.right);
         break;
     case EXPRESSION_UNARY_OPERATOR:
         free_ast_expression(exp->expression_operator.left);
         break;
+    case EXPRESSION_INDEX:
+        free_ast_expression(exp->expression_index.from);
+        free_ast_expression(exp->expression_index.key);
     case EXPRESSION_VAR:
     case EXPRESSION_FIXED_VALUE:
         break;

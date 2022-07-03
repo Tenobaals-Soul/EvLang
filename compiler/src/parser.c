@@ -89,6 +89,7 @@ static const int op_prio[] = {
 };
 
 static const unsigned long long unary_bitmask = (
+    1 << ADD_OPERATOR |
     1 << SUBTRACT_OPERATOR |
     1 << BINARY_NOT_OPERATOR |
     1 << BOOL_NOT_OPERATOR
@@ -255,10 +256,6 @@ state on_found_operator_token(state_data* data, Token* token) {
         pop(&data->operator_stack);
         Expression* val2 = pop(&data->value_stack);
         Expression* val1 = pop(&data->value_stack);
-        if (val1 == NULL || val2 == NULL) {
-            printf("fatal internal error - parse - %d", __LINE__);
-            exit(1);
-        }
         top->expression_operator.left = val1;
         top->expression_operator.right = val2;
         push(&data->value_stack, top);
@@ -288,10 +285,6 @@ state on_found_closing_paranthesis(state_data* data, Token* token) {
         pop(&data->operator_stack);
         Expression* val2 = pop(&data->value_stack);
         Expression* val1 = pop(&data->value_stack);
-        if (val1 == NULL || val2 == NULL) {
-            printf("fatal internal error - parse - %d", __LINE__);
-            exit(1);
-        }
         top->expression_operator.left = val1;
         top->expression_operator.right = val2;
         push(&data->value_stack, top);
