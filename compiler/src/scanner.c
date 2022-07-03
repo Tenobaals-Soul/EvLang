@@ -498,7 +498,7 @@ state var_got_assigned(state_data* data) {
             flush_stacked_data(data);
             if (type_stack.count == 0) {
                 stack_destroy(&type_stack);
-                transition(scan_class);
+                transition(scan_class, END_FINE);
             }
             if (type != '{') {
                 throw_raw_expected(token, "you are missing a %c", inverse_bracket(type));
@@ -676,7 +676,6 @@ StringDict* scan_content(TokenList tokens, unsigned int* index) {
     if (error) {
         data.index--;
         *index = data.index;
-        free_ast(NULL, dict);
         free(data.st_data);
         return NULL;
     }

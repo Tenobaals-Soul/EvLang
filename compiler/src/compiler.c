@@ -70,7 +70,7 @@ void message_internal(const char* color_code, const char* line, const char* sour
     }
 }
 
-StackedData *get_from_ident_dot_seq(StringDict *src, const char *name, TokenList *tokens, int token_index, bool throw) {
+StackedData* get_from_ident_dot_seq(StringDict *src, const char *name, TokenList *tokens, int token_index, bool throw) {
     const char *env = enviroment;
     const char *acs = name;
     StackedData* found = NULL;
@@ -343,6 +343,10 @@ void free_tokens(TokenList token_list) {
 void print_ast_internal2(Expression *exp) {
     switch (exp->expression_type) {
     case EXPRESSION_CALL:
+        if (exp->expression_call.call == NULL) {
+            printf("(unknown function)");
+            break;
+        }
         printf("%s(", exp->expression_call.call->name);
         unsigned int i;
         if (exp->expression_call.args[0]) {
@@ -373,7 +377,10 @@ void print_ast_internal2(Expression *exp) {
         printf("%s", exp->expression_variable ? exp->expression_variable->name : "error-var");
         break;
     case EXPRESSION_UNARY_OPERATOR:
-        printf(" -");
+        print_operator(exp->expression_operator.operator);
+        printf("(");
+        print_ast_internal2(exp->expression_operator.left);
+        printf(")");
         break;
     }
 }

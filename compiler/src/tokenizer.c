@@ -452,9 +452,9 @@ unsigned int t_err(current_read_data* cr, const char** src) {
 int extract_next(current_read_data* cr, StringDict* dict, const char** src, TokenList* list) {
     if (try_extract_end(cr, src, list)) return 1;
     if (try_extract_identifier_or_keyword(cr, dict, src, list)) return 1;
+    if (try_extract_operator(cr, src, list)) return 1;
     if (try_extract_fixed_value(cr, src, list)) return 1;
     if (try_extract_any_paranthesis(cr, src, list)) return 1;
-    if (try_extract_operator(cr, src, list)) return 1;
     if (try_extract_assign(cr, src, list)) return 1;
     if (try_extract_seperator(cr, src, list)) return 1;
     if (try_extract_dot(cr, src, list)) return 1;

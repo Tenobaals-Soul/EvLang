@@ -19,7 +19,7 @@ typedef struct Function Function;
 
 struct Expression {
     enum ExpressionType {
-        EXPRESSION_CALL, EXPRESSION_OPERATOR,
+        EXPRESSION_CALL, EXPRESSION_OPERATOR, EXPRESSION_INDEX,
         EXPRESSION_UNARY_OPERATOR, EXPRESSION_FIXED_VALUE,
         EXPRESSION_OPEN_PARANTHESIS_GUARD, EXPRESSION_VAR
     } expression_type;
@@ -36,6 +36,10 @@ struct Expression {
             Expression** args;
             unsigned int arg_count;
         } expression_call;
+        struct {
+            Expression* from;
+            Expression* key;
+        } expression_index;
     };
 };
 

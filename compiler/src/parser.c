@@ -53,7 +53,7 @@ void free_expression(Expression* exp) {
     free(exp);
 }
 
-static void throw_raw_expected(Token* token_with_error, const char* expected, ...) {
+static void throw(Token* token_with_error, const char* expected, ...) {
     va_list arglist;
 
     va_start( arglist, expected );
@@ -161,6 +161,16 @@ state on_find_ident(Token* token, state_data* data) {
     transition(parse_exp_found_ident, END_FINE);
 }
 
+Expression* push_unary(state_data* data, Expression* target) {
+    Expression* top;
+    while ((top = peek(&data->operator_stack)) && top->expression_type == EXPRESSION_UNARY_OPERATOR) {
+        pop(&data->operator_stack);
+        top->expression_operator.left = target;
+        target = top;
+    }
+    return target;
+}
+
 state parse_exp_start(state_data* data) {
     Token* token = get_token(data);
     Expression* exp;
@@ -169,6 +179,7 @@ state parse_exp_start(state_data* data) {
         exp = calloc(sizeof(Expression), 1);
         exp->expression_type = EXPRESSION_FIXED_VALUE;
         exp->fixed_value = token;
+        exp = push_unary(data, exp);
         push(&data->value_stack, exp);
         transition(parse_exp_found_value, END_FINE);
     case IDENTIFIER_TOKEN:
@@ -179,9 +190,21 @@ state parse_exp_start(state_data* data) {
         exp->expression_type = EXPRESSION_OPEN_PARANTHESIS_GUARD;
         push(&data->operator_stack, exp);
         transition(parse_exp_start);
+    case OPERATOR_TOKEN:
+        if (is_unary(token->operator_type)) {
+            Expression* exp = calloc(sizeof(Expression), 1);
+            exp->expression_type = EXPRESSION_UNARY_OPERATOR;
+            exp->expression_operator.operator = token->operator_type;
+            push(&data->operator_stack, exp);
+            transition(parse_exp_start);
+        }
+        else {
+            throw(token, "no right side expression to operator");
+            transition()
+        }
     default:
         if (data->throw) {
-            throw_raw_expected(token, "expecten an expression");
+            throw(token, "expecten an expression");
             transition(NULL, END_ERROR);
         }
         else {
@@ -198,6 +221,7 @@ state parse_exp_found_operator(state_data* data) {
         exp = calloc(sizeof(Expression), 1);
         exp->expression_type = EXPRESSION_FIXED_VALUE;
         exp->fixed_value = token;
+        exp = push_unary(data, exp);
         push(&data->value_stack, exp);
         transition(parse_exp_found_value, END_FINE);
     case IDENTIFIER_TOKEN:
@@ -208,16 +232,27 @@ state parse_exp_found_operator(state_data* data) {
         exp->expression_type = EXPRESSION_OPEN_PARANTHESIS_GUARD;
         push(&data->operator_stack, exp);
         transition(parse_exp_start);
+    case OPERATOR_TOKEN:
+        if (is_unary(token->operator_type)) {
+            Expression* exp = calloc(sizeof(Expression), 1);
+            exp->expression_type = EXPRESSION_UNARY_OPERATOR;
+            exp->expression_operator.operator = token->operator_type;
+            push(&data->operator_stack, exp);
+            transition(parse_exp_start);
+        }
+        throw(token, "no right side expression to operator");
+        transition(NULL, END_ERROR);
     default:
-        throw_raw_expected(token, "no right side expression to operator");
+        throw(token, "no right side expression to operator");
         transition(NULL, END_ERROR);
     }
 }
 
 state on_found_operator_token(state_data* data, Token* token) {
     Expression* top = NULL;
-    while ((top = pop(&data->operator_stack)) && top->expression_type != EXPRESSION_OPEN_PARANTHESIS_GUARD
+    while ((top = peek(&data->operator_stack)) && top->expression_type != EXPRESSION_OPEN_PARANTHESIS_GUARD
             && op_prio[top->expression_operator.operator] >= op_prio[token->operator_type]) {
+        pop(&data->operator_stack);
         Expression* val2 = pop(&data->value_stack);
         Expression* val1 = pop(&data->value_stack);
         if (val1 == NULL || val2 == NULL) {
@@ -228,7 +263,6 @@ state on_found_operator_token(state_data* data, Token* token) {
         top->expression_operator.right = val2;
         push(&data->value_stack, top);
     }
-    if (top) push(&data->operator_stack, top);
     Expression* operator = calloc(sizeof(Expression), 1);
     operator->expression_type = EXPRESSION_OPERATOR;
     operator->expression_operator.operator = token->operator_type;
@@ -240,7 +274,7 @@ state on_found_closing_paranthesis(state_data* data, Token* token) {
     if (token) {
         if (data->paranthesis_layer == 0) {
             if (data->throw) {
-                throw_raw_expected(token, "no matching opening paranthesis found");
+                throw(token, "no matching opening paranthesis found");
                 transition(NULL, END_ERROR);
             }
             else {
@@ -250,8 +284,8 @@ state on_found_closing_paranthesis(state_data* data, Token* token) {
         data->paranthesis_layer--;
     }
     Expression* top = NULL;
-    while ((top = pop(&data->operator_stack)) &&
-            (top->expression_type != EXPRESSION_OPEN_PARANTHESIS_GUARD || token == NULL)) {
+    while ((top = peek(&data->operator_stack)) && (top->expression_type != EXPRESSION_OPEN_PARANTHESIS_GUARD || token == NULL)) {
+        pop(&data->operator_stack);
         Expression* val2 = pop(&data->value_stack);
         Expression* val1 = pop(&data->value_stack);
         if (val1 == NULL || val2 == NULL) {
@@ -262,7 +296,7 @@ state on_found_closing_paranthesis(state_data* data, Token* token) {
         top->expression_operator.right = val2;
         push(&data->value_stack, top);
     }
-    if (token) free(top);
+    if (token) free(pop(&data->operator_stack));
     transition(parse_exp_found_value, END_FINE);
 }
 
@@ -295,17 +329,19 @@ static inline Expression* new_call(state_data* data) {
 
 state function_arg_recover(state_data* data) {
     if (data->tokens.tokens[data->index].type == CLOSE_PARANTHESIS_TOKEN) {
-        push(&data->value_stack, data->pending_func_call);
+        Expression* exp = push_unary(data, data->pending_func_call);
+        push(&data->value_stack, exp);
         transition(parse_exp_found_value, END_FINE);
     }
-    throw_raw_expected(&data->tokens.tokens[data->index], "expected an expression");
+    throw(&data->tokens.tokens[data->index], "expected an expression");
     for (int i = 0; data->pending_func_call->expression_call.args[0]; i++) {
         free(data->pending_func_call->expression_call.args[i]);
     }
     while (data->index < data->end_on_index) {
         data->index++;
         if (data->tokens.tokens[data->index].type == CLOSE_PARANTHESIS_TOKEN) {
-            push(&data->value_stack, data->pending_func_call);
+            Expression* exp = push_unary(data, data->pending_func_call);
+            push(&data->value_stack, exp);
             data->pending_func_call = NULL;
             transition(parse_exp_found_value, END_ERROR | END_FINE);
         }
@@ -323,13 +359,17 @@ state function_arg_recover(state_data* data) {
 }
 
 state on_function_exec(state_data* data) {
+    int return_mask = 0;
     if (data->st_data == NULL) {
-        throw_raw_expected(&data->tokens.tokens[data->index], "unexpected token");
+        throw(&data->tokens.tokens[data->index], "unexpected token");
         transition(NULL, END_ERROR);
     }
     Expression* call;
     if (data->pending_func_call == NULL) {
         call = new_call(data);
+        if (call->expression_call.call == NULL) {
+            return_mask |= END_ERROR;
+        }
     }
     else {
         call = data->pending_func_call;
@@ -337,28 +377,58 @@ state on_function_exec(state_data* data) {
     data->index++;
     Expression* argument = sub_expression(data);
     if (argument == NULL) {
-        return function_arg_recover(data);
+        state to_ret = function_arg_recover(data);
+        data->flags |= return_mask;
+        return to_ret;
     }
     else if (call->expression_call.args) {
         call->expression_call.args[call->expression_call.arg_count] = argument;
         call->expression_call.args = realloc(call->expression_call.args, sizeof(Expression*) * (++call->expression_call.arg_count + 1));
         call->expression_call.args[call->expression_call.arg_count] = NULL;
     }
-    transition(parse_exp_arg_ended, NO_ADVANCE);
+    transition(parse_exp_arg_ended, NO_ADVANCE | return_mask);
+}
+
+state parse_exp_found_index_exp(state_data* data) {
+    Token* token = &data->tokens.tokens[data->index];
+    if (token->type != CLOSE_INDEX_TOKEN) {
+        throw(token, "expected \"]\" here");
+        transition(parse_exp_found_value, END_FINE | END_ERROR);
+    }
+    transition(parse_exp_found_value, END_FINE);
+}
+
+state on_found_opening_index(state_data* data) {
+    Expression* inner_exp = sub_expression(data);
+    Expression* outer_exp = calloc(sizeof(Expression), 1);
+    outer_exp->expression_type = EXPRESSION_INDEX;
+    outer_exp->expression_index.from = pop(&data->value_stack);
+    outer_exp->expression_index.key = inner_exp;
+    push(&data->value_stack, outer_exp);
+    transition(parse_exp_found_index_exp, inner_exp ? NO_ADVANCE : NO_ADVANCE | END_ERROR);
 }
 
 state parse_exp_found_ident(state_data* data) {
     Token* token = get_token(data);
+    Expression* exp;
     switch (token->type) {
     case OPERATOR_TOKEN:
-        Expression* exp = calloc(sizeof(Expression), 1);
+        exp = calloc(sizeof(Expression), 1);
         exp->expression_type = EXPRESSION_VAR;
         exp->expression_variable = find_by_accessor(&data->access_dicts, data->accessor, &data->tokens, data->accessor_start);
+        exp = push_unary(data, exp);
         push(&data->value_stack, exp);
         free(data->accessor);
         data->accessor = NULL;
         return on_found_operator_token(data, token);
     case CLOSE_PARANTHESIS_TOKEN:
+        exp = calloc(sizeof(Expression), 1);
+        exp->expression_type = EXPRESSION_VAR;
+        exp->expression_variable = find_by_accessor(&data->access_dicts, data->accessor, &data->tokens, data->accessor_start);
+        exp = push_unary(data, exp);
+        push(&data->value_stack, exp);
+        free(data->accessor);
+        data->accessor = NULL;
         return on_found_closing_paranthesis(data, token);
     case DOT_TOKEN:
         transition(parse_exp_found_ident_dot);
@@ -366,7 +436,7 @@ state parse_exp_found_ident(state_data* data) {
         return on_function_exec(data);
     default:
         if (data->throw) {
-            throw_raw_expected(token, "unexpected token");
+            throw(token, "unexpected token");
             transition(NULL, END_ERROR);
         }
         else {
@@ -382,7 +452,7 @@ state parse_exp_found_ident_dot(state_data* data) {
         return on_find_ident(token, data);
     default:
         if (data->throw) {
-            throw_raw_expected(token, "expected an identifier");
+            throw(token, "expected an identifier");
             transition(NULL, END_ERROR);
         }
         else {
@@ -398,9 +468,11 @@ state parse_exp_found_value(state_data* data) {
         return on_found_operator_token(data, token);
     case CLOSE_PARANTHESIS_TOKEN:;
         return on_found_closing_paranthesis(data, token);
+    case OPEN_INDEX_TOKEN:
+        return on_found_opening_index(data);
     default:
         if (data->throw) {
-            throw_raw_expected(token, "unexpected token");
+            throw(token, "unexpected token");
             transition(NULL, END_ERROR);
         }
         else {
@@ -415,12 +487,13 @@ state parse_exp_arg_ended(state_data* data) {
     case SEPERATOR_TOKEN:;
         return on_function_exec(data);
     case CLOSE_PARANTHESIS_TOKEN:;
-        push(&data->value_stack, data->pending_func_call);
+        Expression* exp = push_unary(data, data->pending_func_call);
+        push(&data->value_stack, exp);
         data->pending_func_call = NULL;
         transition(parse_exp_found_value, END_FINE);
     default:
         if (data->throw) {
-            throw_raw_expected(token, "unexpected token");
+            throw(token, "unexpected token");
             transition(NULL, END_ERROR);
         }
         else {

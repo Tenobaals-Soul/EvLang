@@ -1,5 +1,1 @@
-class ExampleLib {
-    public static void init(String text) {
-
-    }
-}
+int a = foo(-2);
