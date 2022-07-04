@@ -496,6 +496,7 @@ state parse_exp_arg_ended(state_data* data) {
 }
 
 Expression* parse_expression(StackedData* method_or_var, struct parse_args* args, bool throw) {
+    if (method_or_var->text_start >= method_or_var->text_end) return NULL;
     state next_state = { parse_exp_start };
     bool error = false;
     state_data data = {
@@ -506,6 +507,7 @@ Expression* parse_expression(StackedData* method_or_var, struct parse_args* args
         .st_data = method_or_var,
         .end_on_index = method_or_var->text_end
     };
+    args->tokens = method_or_var->env_token;
     while (next_state.func) {
         if (data.index >= method_or_var->text_end || get_token(&data)->type == END_TOKEN) {
             if (data.flags & END_FINE) {
@@ -560,7 +562,7 @@ void parse_dict_item(void* env, const char* key, void* val) {
     struct parse_args* args = env;
     StackedData* st_data = val;
     switch (st_data->type) {
-    case ENTRY_CLASS:
+    case ENTRY_CLASS:;
         struct parse_args new_args = {
             .has_errors = false,
             .tokens = st_data->env_token

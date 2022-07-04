@@ -18,6 +18,7 @@ typedef struct state_data {
     unsigned int flags;
     unsigned int depth;
     const char* on_eof;
+    bool on_lowest_level;
 } state_data;
 
 typedef struct state {
@@ -268,7 +269,7 @@ state scan_class_found_class_keyword(state_data* data) {
 
 state scan_inner_class(state_data* data) {
     data->index++;
-    StringDict* content = scan_content(data->token_list, &data->index);
+    StringDict* content = scan_content(data->token_list, &data->index, false);
     if (!content) transition(NULL, END_ERROR);
     data->st_data->class.class_content = content;
     flush_stacked_data(data);
@@ -425,9 +426,11 @@ state scan_class_found_name(state_data* data) {
     switch (token->type) {
     case END_TOKEN:
         data->st_data->type = ENTRY_VARIABLE;
+        data->st_data->text_start = data->index;
+        data->st_data->text_end = data->index;
         flush_stacked_data(data);
         data->st_data = empty_base_entry(data->token_list);
-        transition(scan_class);
+        transition(scan_class, data->on_lowest_level ? END_FINE : 0);
     case ASSIGN_TOKEN:
         data->st_data->type = ENTRY_VARIABLE;
         transition(var_got_assigned);
@@ -464,8 +467,10 @@ state scan_class_found_name_no_method(state_data* data) {
     switch (token->type) {
     case END_TOKEN:
         data->st_data->type = ENTRY_VARIABLE;
+        data->st_data->text_start = data->index;
+        data->st_data->text_end = data->index;
         flush_stacked_data(data);
-        transition(scan_class);
+        transition(scan_class, data->on_lowest_level ? END_FINE : 0);
     case ASSIGN_TOKEN:
         data->st_data->type = ENTRY_VARIABLE;
         transition(var_got_assigned);
@@ -498,7 +503,7 @@ state var_got_assigned(state_data* data) {
             flush_stacked_data(data);
             if (type_stack.count == 0) {
                 stack_destroy(&type_stack);
-                transition(scan_class, END_FINE);
+                transition(scan_class, data->on_lowest_level ? END_FINE : 0);
             }
             if (type != '{') {
                 throw_raw_expected(token, "you are missing a %c", inverse_bracket(type));
@@ -635,14 +640,14 @@ state scan_method_body(state_data* data) {
             append_method(data->dest, token, data->st_data, data->st_data->name);
             data->st_data = empty_base_entry(data->token_list);
             data->st_data->text_end = data->index;
-            transition(scan_class);
+            transition(scan_class, data->on_lowest_level ? END_FINE : 0);
         }
     default:
         transition(scan_method_body);
     }
 }
 
-StringDict* scan_content(TokenList tokens, unsigned int* index) {
+StringDict* scan_content(TokenList tokens, unsigned int* index, bool on_lowest_level) {
     state next_state = { scan_class };
     StringDict* dict = malloc(sizeof(StringDict));
     string_dict_init(dict);
@@ -652,7 +657,8 @@ StringDict* scan_content(TokenList tokens, unsigned int* index) {
         .st_data = empty_base_entry(tokens),
         .token_list = tokens,
         .index = *index,
-        .flags = 0
+        .flags = 0,
+        .on_lowest_level = on_lowest_level
     };
     while (next_state.func) {
         if (data.index >= data.token_list.cursor) {

@@ -697,7 +697,7 @@ int main(int argc, char **argv) {
         print_tokens(token_list);
         printf("\n");
         unsigned int index = 0;
-        StringDict* content = scan_content(token_list, &index);
+        StringDict* content = scan_content(token_list, &index, true);
         StackedData* content_wrapper = calloc(sizeof(StackedData), 1);
         content_wrapper->class.class_content = content;
         content_wrapper->type = ENTRY_MODULE;

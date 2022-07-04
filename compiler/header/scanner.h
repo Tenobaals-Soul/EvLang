@@ -115,6 +115,6 @@ struct StackedData {
     } method_table;
 };
 
-StringDict* scan_content(TokenList tokens, unsigned int* index);
+StringDict* scan_content(TokenList tokens, unsigned int* index, bool on_lowest_layer);
 
 #endif
