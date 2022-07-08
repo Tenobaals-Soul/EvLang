@@ -1,0 +1,34 @@
+# COMPILER
+
+## necessary
+- [x] read files
+- [x] tokenize
+- [x] scan files
+- [x] parse expressions
+- [ ] statement parsing
+- [ ] control structures
+    - [ ] return
+    - [ ] if
+    - [ ] else
+    - [ ] while
+    - [ ] for
+    - [ ] switch
+- [ ] scope checking (superclasses)
+    - [ ] accessability checks
+- [ ] interfaces
+- [ ] bytecode
+- [ ] runtime execution
+
+## usefull
+- [x] format error messages
+- [x] basic error recovery (scan)
+- [x] basic error recovery (parse)
+- [ ] advanced error recovery (scan)
+- [ ] advanced error recovery (scan)
+- [ ] command line arguments and flags
+
+## would be cool
+- [ ] compile methods as shaders
+- [ ] native c api
+- [ ] jit compiling
+- [ ] debugger

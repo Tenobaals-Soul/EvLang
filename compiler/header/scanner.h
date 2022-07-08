@@ -21,7 +21,8 @@ struct Expression {
     enum ExpressionType {
         EXPRESSION_CALL, EXPRESSION_OPERATOR, EXPRESSION_INDEX,
         EXPRESSION_UNARY_OPERATOR, EXPRESSION_FIXED_VALUE,
-        EXPRESSION_OPEN_PARANTHESIS_GUARD, EXPRESSION_VAR
+        EXPRESSION_OPEN_PARANTHESIS_GUARD, EXPRESSION_VAR,
+        EXPRESSION_ASSIGN
     } expression_type;
     union {
         StackedData* expression_variable;
@@ -45,15 +46,13 @@ struct Expression {
 
 struct Statement {
     enum StatementType {
-        STATEMENT_ASSIGN, STATEMENT_IF, STATEMENT_WHILE,
-        STATEMENT_FOR, STATEMENT_SWITCH,
-        STATEMENT_FUNCTION_CALL, STATEMENT_RETURN
+        STATEMENT_CALC, STATEMENT_IF, STATEMENT_WHILE,
+        STATEMENT_FOR, STATEMENT_SWITCH, STATEMENT_RETURN
     } statement_type;
     union {
         struct {
-            Expression* left;
-            Expression* right;
-        } statement_assign;
+            Expression* calc;
+        } statement_calc;
         struct {
             Expression* condition;
             Statement** on_true;
@@ -90,11 +89,9 @@ struct StackedData {
     struct {
         char* type;
         Expression* exec_text;
-        bool was_initialized;
     } var;
     struct {
         StringDict* class_content;
-        StringDict* packed;
         char* derives_from;
         char** implements;
         unsigned int implements_len;
@@ -105,6 +102,7 @@ struct StackedData {
             char* type;
             char* name;
         }* args;
+        StringDict* local_scope;
         unsigned int arg_count;
         Statement** exec_text;
     } method;
@@ -116,5 +114,6 @@ struct StackedData {
 };
 
 StringDict* scan_content(TokenList tokens, unsigned int* index, bool on_lowest_layer);
+char* strmcpy(const char* src);
 
 #endif

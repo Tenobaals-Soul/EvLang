@@ -391,6 +391,14 @@ void print_ast_internal2(Expression *exp) {
         printf("[");
         print_ast_internal2(exp->expression_index.key);
         printf("]");
+        break;
+    case EXPRESSION_ASSIGN:
+        printf("(");
+        print_ast_internal2(exp->expression_operator.left);
+        printf(") = (");
+        print_ast_internal2(exp->expression_operator.right);
+        printf(")");
+        break;
     }
 }
 
@@ -536,6 +544,7 @@ void free_ast_expression(Expression* exp) {
     case EXPRESSION_OPEN_PARANTHESIS_GUARD:
         printf("fatal internal error detected - %d", __LINE__);
         exit(1);
+    case EXPRESSION_ASSIGN:
     case EXPRESSION_OPERATOR:
         if (exp->expression_operator.left) free_ast_expression(exp->expression_operator.left);
         if (exp->expression_operator.right) free_ast_expression(exp->expression_operator.right);

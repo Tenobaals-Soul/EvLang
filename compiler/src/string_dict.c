@@ -8,6 +8,12 @@ struct string_dict_item {
     struct string_dict_item* next;
 };
 
+StringDict* newStringDict() {
+    StringDict* memory = malloc(sizeof(StringDict));
+    string_dict_init(memory);
+    return memory;
+}
+
 void string_dict_init(StringDict* dict) {
     unsigned int i = STRING_DICT_TABLE_SIZE;
     do {

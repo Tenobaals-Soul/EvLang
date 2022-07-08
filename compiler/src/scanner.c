@@ -436,6 +436,7 @@ state scan_class_found_name(state_data* data) {
         transition(var_got_assigned);
     case OPEN_PARANTHESIS_TOKEN:
         data->st_data->type = ENTRY_METHOD;
+        data->st_data->method.local_scope = new(StringDict);
         transition(scan_method_expect_arg_type);
     case SEPERATOR_TOKEN:;
         StackedData* old = data->st_data;
@@ -590,8 +591,14 @@ state scan_method_expect_arg_type(state_data* data) {
 state scan_method_expect_arg_name(state_data* data) {
     Token* token = get_token(data);
     switch (token->type) {
-    case IDENTIFIER_TOKEN:
-        data->st_data->method.args[data->st_data->method.arg_count++].name = strmcpy(token->identifier);
+    case IDENTIFIER_TOKEN:;
+        struct argument_s* arg = &data->st_data->method.args[data->st_data->method.arg_count++];
+        arg->name = strmcpy(token->identifier);
+        StackedData* arg_scope = empty_base_entry(data->token_list);
+        arg_scope->type = ENTRY_VARIABLE;
+        arg_scope->name = arg->name;
+        arg_scope->var.type = arg->type;
+        string_dict_put(data->st_data->method.local_scope, arg->name, arg_scope);
         transition(scan_method_found_arg);
     default:
         throw_raw_expected(token, "expected an identifier");
@@ -649,8 +656,7 @@ state scan_method_body(state_data* data) {
 
 StringDict* scan_content(TokenList tokens, unsigned int* index, bool on_lowest_level) {
     state next_state = { scan_class };
-    StringDict* dict = malloc(sizeof(StringDict));
-    string_dict_init(dict);
+    StringDict* dict = new(StringDict);
     bool error = false;
     state_data data = {
         .dest = dict,

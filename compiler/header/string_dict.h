@@ -4,6 +4,8 @@
 
 #define STRING_DICT_TABLE_SIZE 512
 
+#define new(type) (new##type())
+
 typedef struct StringDict {
     unsigned int count;
     struct string_dict_item* items[STRING_DICT_TABLE_SIZE];
@@ -21,5 +23,7 @@ unsigned int string_dict_copy(StringDict* dest, StringDict* src);
 unsigned int string_dict_copy_if(StringDict* dest, StringDict* src, bool (*condition)(const char* key, void* val));
 unsigned int string_dict_copy_complex_if(StringDict* dest, StringDict* src, bool (*condition)
         (void* enviroment, const char* key, void* val), void* enviroment);
+
+StringDict* newStringDict();
 
 #endif
