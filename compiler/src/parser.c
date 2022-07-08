@@ -673,7 +673,7 @@ state parse_exp_arg_ended(state_data* data) {
 
 Expression* parse_expression_internal(StackedData* method_or_var, struct parse_args* args, bool throw) {
     if (method_or_var->text_start >= method_or_var->text_end) return NULL;
-    state next_state = {  };
+    state next_state = { args->start.func ? args->start.func : &parse_exp_start };
     bool error = false;
     state_data data = {
         .throw = throw,
@@ -729,6 +729,7 @@ Expression* parse_expression(StackedData* method_or_var, struct parse_args* args
 
 
 void parse_method(StackedData* method, struct parse_args* args) {
+    return;
     bool has_errors = false;
     bool in_recovery = false;
     while (args->index < method->text_end) {

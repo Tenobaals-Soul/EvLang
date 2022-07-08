@@ -623,6 +623,7 @@ state scan_method_args_ended(state_data* data) {
     Token* token = get_token(data);
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
+        data->st_data->text_start = data->index;
         transition(scan_method_body);
     default:
         throw_raw_expected(token, "expected \"{\"");
@@ -631,7 +632,6 @@ state scan_method_args_ended(state_data* data) {
 }
 
 state scan_method_body(state_data* data) {
-    data->st_data->text_start = data->index;
     Token* token = get_token(data);
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
