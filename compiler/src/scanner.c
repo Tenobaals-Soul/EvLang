@@ -644,9 +644,11 @@ state scan_method_body(state_data* data) {
         }
         else {
             data->depth = 0;
+            data->st_data->text_end = data->index;
+            data->st_data->method.exec_text = malloc(sizeof(Statement*));
+            data->st_data->method.exec_text[0] = NULL;
             append_method(data->dest, token, data->st_data, data->st_data->name);
             data->st_data = empty_base_entry(data->token_list);
-            data->st_data->text_end = data->index;
             transition(scan_class, data->on_lowest_level ? END_FINE : 0);
         }
     default:

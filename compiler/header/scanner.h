@@ -69,9 +69,8 @@ struct Statement {
             Statement** text;
         } statement_for;
         struct {
-            Function* call;
-            Statement** args;
-        } expression_call;
+            Expression* return_value;
+        } statement_return;
     };
 };
 
@@ -105,6 +104,7 @@ struct StackedData {
         StringDict* local_scope;
         unsigned int arg_count;
         Statement** exec_text;
+        unsigned int exec_text_size;
     } method;
     struct {
         char* return_type;

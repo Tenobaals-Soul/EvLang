@@ -29,6 +29,7 @@ const char* get_enviroment() {
 void message_internal(const char* color_code, const char* line, const char* source, unsigned int line_no,
                       unsigned int char_no, unsigned int len, const char* message, va_list l) {
     printf("%s %u:%u %s%s%s: ", enviroment, line_no, char_no, color_code, source, "\033[0m");
+    len -= char_no;
     vprintf(message, l);
     printf("\n");
     unsigned int print_len = 0;
@@ -563,10 +564,40 @@ void free_ast_expression(Expression* exp) {
 }
 
 void free_ast_statements(Statement** st) {
-    switch ((*st)->statement_type) {
-        default:
-            break;
+    for (; *st; st++) {
+        switch (((*st)->statement_type)) {
+            case STATEMENT_CALC:
+                free_ast_expression((*st)->statement_calc.calc);
+                break;
+            case STATEMENT_FOR:
+                free_ast_expression((*st)->statement_for.condition);
+                free_ast_statements((*st)->statement_for.first);
+                free_ast_statements((*st)->statement_for.last);
+                free_ast_statements((*st)->statement_for.text);
+                break;
+            case STATEMENT_IF:
+                free_ast_expression((*st)->statement_if.condition);
+                free_ast_statements((*st)->statement_if.on_true);
+                free_ast_statements((*st)->statement_if.on_false);
+                break;
+            case STATEMENT_RETURN:
+                free_ast_expression((*st)->statement_return.return_value);
+                break;
+            case STATEMENT_SWITCH:
+                printf("switch is not implemented yet\n");
+                exit(1);
+            case STATEMENT_WHILE:
+                free_ast_expression((*st)->statement_while.condition);
+                free_ast_statements((*st)->statement_while.text);
+                break;
+        }
+        free(*st);
     }
+}
+
+void free_arg(const char *key, void *val) {
+    (void) key;
+    free(val);
 }
 
 void free_ast(const char *key, void *val) {
@@ -593,11 +624,17 @@ void free_ast(const char *key, void *val) {
     case ENTRY_METHOD:
         free(entry->name);
         free(entry->method.return_type);
-        if (entry->method.exec_text) free_ast_statements(entry->method.exec_text);
+        if (entry->method.exec_text) {
+            free_ast_statements(entry->method.exec_text);
+            free(entry->method.exec_text);
+        }
         for (unsigned int i = 0; i < entry->method.arg_count; i++) {
             free(entry->method.args[i].name);
             free(entry->method.args[i].type);
         }
+        string_dict_foreach(entry->method.local_scope, free_arg);
+        string_dict_destroy(entry->method.local_scope);
+        free(entry->method.local_scope);
         free(entry->method.args);
         break;
     case ENTRY_METHOD_TABLE:

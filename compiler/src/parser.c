@@ -63,6 +63,20 @@ static void throw(Token* token_with_error, const char* expected, ...) {
         "%s", expected, arglist);
     va_end( arglist );
 }
+
+static void warn_whole_expression(Token* token, char* message) {
+    unsigned int line_start = 0;
+    while (token->line_content[line_start] == ' ' || token->line_content[line_start] == '\t') {
+        if (token->line_content[line_start] == '\n') {
+            printf("internal error - parse - %d", __LINE__);
+            exit(1);
+        }
+        line_start++;
+    }
+    make_warning(token->line_content, token->line_in_file,
+        line_start, ~0, message);
+}
+
 /*
 static void warn(Token* token_with_error, const char* expected, ...) {
     va_list arglist;
@@ -729,10 +743,11 @@ Expression* parse_expression(StackedData* method_or_var, struct parse_args* args
 
 
 void parse_method(StackedData* method, struct parse_args* args) {
-    return;
     bool has_errors = false;
     bool in_recovery = false;
-    while (args->index < method->text_end) {
+    args->index = method->text_start;
+    while (++args->index < method->text_end) {
+        unsigned int start_index = args->index;
         if (in_recovery) {
             in_recovery = args->tokens.tokens[args->index].type != END_TOKEN;
             continue;
@@ -763,14 +778,18 @@ void parse_method(StackedData* method, struct parse_args* args) {
         case EXPRESSION_OPERATOR:
         case EXPRESSION_UNARY_OPERATOR:
         case EXPRESSION_INDEX:;
-            Token* token = &args->tokens.tokens[args->index];
-            make_warning(token->line_content, token->line_in_file, 0, ~0, "not a statement");
-            continue;
+            warn_whole_expression(&args->tokens.tokens[start_index], "not a statement");
+            break;
         case EXPRESSION_OPEN_PARANTHESIS_GUARD:
             printf("fatal internal error - parse - %d", __LINE__);
             exit(1);
         }
-
+        Statement* stm = malloc(sizeof(Statement));
+        stm->statement_type = STATEMENT_CALC;
+        stm->statement_calc.calc = exp_found;
+        method->method.exec_text[method->method.exec_text_size] = stm;
+        method->method.exec_text = realloc(method->method.exec_text, sizeof(Statement*) * (++method->method.exec_text_size + 1));
+        method->method.exec_text[method->method.exec_text_size] = NULL;
     }
     args->has_errors = has_errors;
 }
@@ -816,7 +835,7 @@ void parse_dict_item(void* env, const char* key, void* val) {
     case ENTRY_MODULE:
     case ERROR_TYPE:
         printf("fatal internal error detected - %d", __LINE__);
-        break;
+        exit(1);
     }
 }
 
