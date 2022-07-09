@@ -5,7 +5,7 @@
 - [x] tokenize
 - [x] scan files
 - [x] parse expressions
-- [ ] statement parsing
+- [x] statement parsing
 - [ ] control structures
     - [ ] return
     - [ ] if

@@ -403,6 +403,28 @@ void print_ast_internal2(Expression *exp) {
     }
 }
 
+void print_statement(Statement* st) {
+    switch ((st->statement_type)) {
+        case STATEMENT_CALC:
+            print_ast_internal2(st->statement_calc.calc);
+            break;
+        case STATEMENT_FOR:
+            printf("for // no more debug information supported");
+            break;
+        case STATEMENT_IF:
+            printf("if // no more debug information supported");
+            break;
+        case STATEMENT_RETURN:
+            printf("return // no more debug information supported");
+            break;
+        case STATEMENT_SWITCH:
+            printf("switch // no more debug information supported");
+            break;
+        case STATEMENT_WHILE:
+            break;
+    }
+}
+
 void print_ast_internal(void *env, const char *name, void *val) {
     int layer = *((int *) env);
     char indent[layer * 4 + 1];
@@ -429,7 +451,12 @@ void print_ast_internal(void *env, const char *name, void *val) {
             }
             printf("%s %s", entry->method.args[i].type, entry->method.args[i].name);
         }
-        printf(") with code: NONE\n");
+        printf(") with code:%s\n", entry->method.exec_text_size ? "" : " NONE");
+        for (unsigned int i = 0; i < entry->method.exec_text_size; i++) {
+            printf("%s    ", indent);
+            print_statement(entry->method.exec_text[i]);
+            printf(";\n");
+        }
         break;
     case ENTRY_METHOD_TABLE:
         printf("%smethod %s with %d overloaded variant(s):\n", indent, name, entry->method_table.len);
@@ -446,7 +473,7 @@ void print_ast_internal(void *env, const char *name, void *val) {
         else {
             printf("NONE");
         }
-        printf("\n");
+        printf(";\n");
         break;
     case ENTRY_ERROR:
         make_error(entry->causing->line_content, entry->causing->line_in_file, entry->causing->char_in_line,
