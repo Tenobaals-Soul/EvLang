@@ -42,19 +42,6 @@ char* read_next_identifier(current_read_data* cr, const char* src, unsigned long
     }
 }
 
-int try_extract_end(current_read_data* cr, const char** src, TokenList* list) {
-    if (**src == ';') {
-        ++*src;
-        list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
-        list->tokens[list->cursor].line_in_file = cr->current_line;
-        list->tokens[list->cursor].line_content = cr->line_begin;
-        list->tokens[list->cursor].text_len = 1;
-        list->tokens[list->cursor].type = END_TOKEN;
-        return 1;
-    }
-    return 0;
-}
-
 int t_get_bool(char* identifier, unsigned long len, current_read_data* cr, TokenList* list, const char** src) {
     if (strcmp(identifier, "true") == 0) {
         list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
@@ -93,6 +80,19 @@ void t_get_keyword_or_identifier(char* identifier, unsigned long len, current_re
         list->tokens[list->cursor].type = IDENTIFIER_TOKEN;
         list->tokens[list->cursor].identifier = identifier;
     }
+}
+
+int try_extract_end(current_read_data* cr, const char** src, TokenList* list) {
+    if (**src == ';') {
+        list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
+        list->tokens[list->cursor].line_in_file = cr->current_line;
+        list->tokens[list->cursor].line_content = cr->line_begin;
+        list->tokens[list->cursor].text_len = 1;
+        list->tokens[list->cursor].type = END_TOKEN;
+        ++*src;
+        return 1;
+    }
+    return 0;
 }
 
 int try_extract_identifier_or_keyword(current_read_data* cr, StringDict* dict, const char** src, TokenList* list) {
@@ -140,7 +140,7 @@ enum parse_number_res parse_octal_number(current_read_data* cr, const char** src
     const char* old = *src;
     unsigned long long i_buffer = 0;
     while (**src >= '0' && **src <= '7') {
-        i_buffer = i_buffer << 3; // times 8
+        i_buffer = i_buffer * 8;
         i_buffer += **src - '0';
         ++*src;
     }
@@ -310,7 +310,8 @@ static int starts_with(const char* src, const char* search) {
     return search[i] == 0;
 }
 
-static int make_operator(current_read_data * cr, const char ** src, TokenList * list, BasicOperator op_type, const char * cmp) {
+static int make_operator(current_read_data* cr, const char** src, TokenList* list,
+                         BasicOperator op_type, const char* cmp) {
     if (starts_with(*src, cmp)) {
         list->tokens[list->cursor].type = OPERATOR_TOKEN;
         list->tokens[list->cursor].operator_type = op_type;
@@ -325,7 +326,7 @@ static int make_operator(current_read_data * cr, const char ** src, TokenList * 
     return 0;
 }
 
-static int try_extract_operator(current_read_data * cr, const char ** src, TokenList * list) {
+static int try_extract_operator(current_read_data* cr, const char** src, TokenList* list) {
     if (make_operator(cr, src, list, ADD_OPERATOR, "+")) return 1;
     if (make_operator(cr, src, list, SUBTRACT_OPERATOR, "-")) return 1;
     if (make_operator(cr, src, list, MULTIPLY_OPERATOR, "*")) return 1;

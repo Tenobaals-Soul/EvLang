@@ -1,5 +1,0 @@
-int foo(int arg) {
-    return ~arg;
-}
-
-int a = foo(-2), b;

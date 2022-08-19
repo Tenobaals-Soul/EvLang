@@ -1,11 +1,10 @@
-# COMPILER
+# EvLang
 
 ## necessary
 - [x] read files
 - [x] tokenize
-- [x] scan files
-- [x] parse expressions
-- [x] statement parsing
+- [ ] parse files
+- [ ] statement parsing
 - [ ] control structures
     - [ ] return
     - [ ] if
@@ -21,10 +20,8 @@
 
 ## usefull
 - [x] format error messages
-- [x] basic error recovery (scan)
-- [x] basic error recovery (parse)
-- [ ] advanced error recovery (scan)
-- [ ] advanced error recovery (scan)
+- [ ] basic error recovery
+- [ ] advanced error recovery
 - [ ] command line arguments and flags
 
 ## would be cool

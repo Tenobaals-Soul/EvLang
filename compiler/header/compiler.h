@@ -3,6 +3,7 @@
 #include<inttypes.h>
 #include<stdbool.h>
 #include<string_dict.h>
+#include<stdarg.h>
 
 // "src\0\0", "append\0" -> "src\0append\0\0"
 char* append_accessor_str(char* src, char* append);
@@ -26,7 +27,7 @@ typedef enum BasicOperator {
 } BasicOperator;
 
 typedef enum TokenType {
-    END_TOKEN, IDENTIFIER_TOKEN,
+    END_TOKEN = 1, IDENTIFIER_TOKEN,
     FIXED_VALUE_TOKEN, OPERATOR_TOKEN,
     OPEN_PARANTHESIS_TOKEN, CLOSE_PARANTHESIS_TOKEN,
     OPEN_BLOCK_TOKEN, CLOSE_BLOCK_TOKEN,
@@ -78,9 +79,165 @@ void make_error(const char * line, unsigned int line_no, unsigned int char_no,
 void make_warning(const char* line, unsigned int line_no, unsigned int char_no, 
         unsigned int len, const char * warning_message, ...);
 
+void vmake_error(const char * line, unsigned int line_no, unsigned int char_no, 
+        unsigned int len, const char * error_message, va_list l);
+
+void vmake_warning(const char* line, unsigned int line_no, unsigned int char_no, 
+        unsigned int len, const char * warning_message, va_list l);
+
 void free_ast(const char* key, void* val);
 
 // src\0src\0\0 -> StackedData
-struct StackedData* get_from_ident_dot_seq(StringDict* src, const char* name, TokenList* tokens, int token_index, bool throw);
+
+typedef struct Expression* Expression;
+typedef struct Statement* Statement;
+
+typedef struct Text Text;
+typedef struct Type Type;
+typedef struct StructData StructData;
+
+typedef struct Method* Method;
+
+typedef struct EntryBase* UnresolvedEntry;
+
+typedef struct Package* Package;
+typedef struct Module* Module;
+typedef struct Class* Class;
+typedef struct Field* Field;
+typedef struct MethodTable* MethodTable;
+
+UnresolvedEntry get_from_ident_dot_seq(StringDict* src, const char* name, TokenList* tokens, int token_index, bool throw);
+
+struct Text {
+    Statement* statements;
+    unsigned int len;
+};
+
+struct Type {
+    Class resolved;
+    char* unresolved;
+};
+
+struct StructData {
+    struct Field* value;
+    unsigned int len;
+};
+
+struct Method {
+    char* name;
+    StructData arguments;
+    Type return_type;
+    StructData stack_data;
+    Text text;
+};
+
+enum EntryType {
+    ENTRY_PACKAGE,
+    ENTRY_MODULE,
+    ENTRY_CLASS,
+    ENTRY_METHODS,
+    ENTRY_FIELD
+};
+
+struct EntryBase {
+    enum EntryType entry_type;
+    char* name;
+    unsigned int line;
+};
+
+struct Field {
+    struct EntryBase meta;
+    Type type;
+};
+
+struct Package {
+    struct EntryBase meta;
+    StringDict package_content;
+};
+
+struct Module {
+    struct EntryBase meta;
+    StructData globals;
+    StringDict module_content;
+    Text text;
+};
+
+struct Class {
+    struct EntryBase meta;
+    StructData static_struct;
+    StructData instance_struct;
+    StringDict class_content;
+    struct {
+        Type* values;
+        unsigned int len;
+    } derives;
+    struct {
+        Type* values;
+        unsigned int len;
+    } implements;
+};
+
+struct MethodTable {
+    struct EntryBase meta;
+    Method* value;
+    unsigned int len;
+};
+
+struct Expression {
+    enum ExpressionType {
+        EXPRESSION_CALL, EXPRESSION_OPERATOR, EXPRESSION_INDEX,
+        EXPRESSION_UNARY_OPERATOR, EXPRESSION_FIXED_VALUE,
+        EXPRESSION_OPEN_PARANTHESIS_GUARD, EXPRESSION_VAR,
+        EXPRESSION_ASSIGN
+    } expression_type;
+    union {
+        Field expression_variable;
+        Token* fixed_value;
+        struct {
+            struct Expression* left;
+            struct Expression* right;
+            BasicOperator operator;
+        } expression_operator;
+        struct {
+            Method call;
+            struct Expression** args;
+            unsigned int arg_count;
+        } expression_call;
+        struct {
+            struct Expression* from;
+            struct Expression* key;
+        } expression_index;
+    };
+};
+
+struct Statement {
+    enum StatementType {
+        STATEMENT_CALC, STATEMENT_IF, STATEMENT_WHILE,
+        STATEMENT_FOR, STATEMENT_SWITCH, STATEMENT_RETURN
+    } statement_type;
+    union {
+        struct {
+            Expression calc;
+        } statement_calc;
+        struct {
+            Expression condition;
+            Text on_true;
+            Text on_false;
+        } statement_if;
+        struct {
+            Expression condition;
+            Text text;
+        } statement_while;
+        struct {
+            Text first;
+            Expression condition;
+            Text last;
+            Text text;
+        } statement_for;
+        struct {
+            Expression return_value;
+        } statement_return;
+    };
+};
 
 #endif

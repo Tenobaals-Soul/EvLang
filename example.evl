@@ -1,11 +1,7 @@
-class ExampleClass derives example.AnOtherExampleClass {
-    int var, num = 5 * (5 + 3), bar = subtract(subtract(-2, 2), -2), i = -+2;
-    int subtract(int b) {
-        5 + 5;
-        8 * 7;
-    }
+int value = value + 5;
+if value == 5 {
+    print("ok");
 }
-
-class AnOtherExampleClass {
-    class InnerExampleClass {}
+else {
+    print("not ok");
 }

@@ -1,7 +1,7 @@
-#ifndef PARSER_H
-#define PARSER_H
-#include<scanner.h>
+#ifndef INCLUDE_PARSER_H
+#define INCLUDE_PARSER_H
+#include<compiler.h>
 
-bool parse(StringDict* dict_to_parse);
+Module parse(TokenList tokens);
 
 #endif

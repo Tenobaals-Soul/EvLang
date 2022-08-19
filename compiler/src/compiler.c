@@ -1,6 +1,5 @@
 #include <string_dict.h>
 #include <tokenizer.h>
-#include <scanner.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,8 +25,9 @@ const char* get_enviroment() {
     return enviroment;
 }
 
-void message_internal(const char* color_code, const char* line, const char* source, unsigned int line_no,
-                      unsigned int char_no, unsigned int len, const char* message, va_list l) {
+void message_internal(const char* color_code, const char* line, const char* source,
+                      unsigned int line_no, unsigned int char_no, unsigned int len,
+                      const char* message, va_list l) {
     printf("%s %u:%u %s%s%s: ", enviroment, line_no, char_no, color_code, source, "\033[0m");
     len -= char_no;
     vprintf(message, l);
@@ -71,10 +71,10 @@ void message_internal(const char* color_code, const char* line, const char* sour
     }
 }
 
-StackedData* get_from_ident_dot_seq(StringDict *src, const char *name, TokenList *tokens, int token_index, bool throw) {
+UnresolvedEntry get_from_ident_dot_seq(StringDict *src, const char *name, TokenList *tokens, int token_index, bool throw) {
     const char *env = enviroment;
     const char *acs = name;
-    StackedData* found = NULL;
+    UnresolvedEntry found = NULL;
     int word = 0;
     for (int i = 0; acs[i]; word++, i++) {
         found = src ? string_dict_get(src, acs + i) : NULL;
@@ -95,16 +95,36 @@ StackedData* get_from_ident_dot_seq(StringDict *src, const char *name, TokenList
         }
         env = name;
         for (; acs[i]; i++);
-        src = found->type == ENTRY_CLASS || found->type == ENTRY_MODULE ? found->class.class_content : NULL;
+        if (found->entry_type == ENTRY_CLASS) {
+            src = &((Class) found)->class_content;
+        }
+        else if (found->entry_type == ENTRY_MODULE) {
+            src = &((Module) found)->module_content;
+        }
     }
     return found;
+}
+
+void vmake_error(const char *line, unsigned int line_no, unsigned int char_no,
+                 unsigned int len, const char *error_message, va_list l) {
+    message_internal("\033[31;1m", line, "error", line_no, char_no, len, error_message, l);
+}
+
+void vmake_warning(const char *line, unsigned int line_no, unsigned int char_no,
+                  unsigned int len, const char *warning_message, va_list l) {
+    message_internal("\033[93m", line, "warning", line_no, char_no, len, warning_message, l);
+}
+
+void vmake_debug_message(const char *line, unsigned int line_no, unsigned int char_no,
+                  unsigned int len, const char *warning_message, va_list l) {
+    message_internal("\033[93m", line, "<DEBUG>", line_no, char_no, len, warning_message, l);
 }
 
 void make_error(const char *line, unsigned int line_no, unsigned int char_no,
                 unsigned int len, const char *error_message, ...) {
     va_list l;
     va_start(l, error_message);
-    message_internal("\033[31;1m", line, "error", line_no, char_no, len, error_message, l);
+    vmake_error(line, line_no, char_no, len, error_message, l);
     va_end(l);
 }
 
@@ -112,7 +132,15 @@ void make_warning(const char *line, unsigned int line_no, unsigned int char_no,
                   unsigned int len, const char *warning_message, ...) {
     va_list l;
     va_start(l, warning_message);
-    message_internal("\033[93m", line, "warning", line_no, char_no, len, warning_message, l);
+    vmake_warning(line, line_no, char_no, len, warning_message, l);
+    va_end(l);
+}
+
+void make_debug_message(const char *line, unsigned int line_no, unsigned int char_no,
+                  unsigned int len, const char *warning_message, ...) {
+    va_list l;
+    va_start(l, warning_message);
+    vmake_warning(line, line_no, char_no, len, warning_message, l);
     va_end(l);
 }
 
@@ -341,7 +369,7 @@ void free_tokens(TokenList token_list) {
     free(token_list.tokens);
 }
 
-void print_ast_internal2(Expression *exp) {
+void print_ast_internal2(Expression exp) {
     if (exp == NULL) {
         printf("?");
         return;
@@ -354,8 +382,8 @@ void print_ast_internal2(Expression *exp) {
         }
         printf("%s(", exp->expression_call.call->name);
         unsigned int i;
-        if (exp->expression_call.args[0]) {
-            for (i = 0; exp->expression_call.args[i + 1]; i++) {
+        if (exp->expression_call.arg_count) {
+            for (i = 0; i < exp->expression_call.arg_count; i++) {
                 print_ast_internal2(exp->expression_call.args[i]);
                 printf(", ");
             }
@@ -379,7 +407,8 @@ void print_ast_internal2(Expression *exp) {
         printf(")");
         break;
     case EXPRESSION_VAR:
-        printf("%s", exp->expression_variable ? exp->expression_variable->name : "error-var");
+        printf("%s", exp->expression_variable->meta.name ?
+               exp->expression_variable->meta.name : "error-var");
         break;
     case EXPRESSION_UNARY_OPERATOR:
         print_operator(exp->expression_operator.operator);
@@ -403,7 +432,7 @@ void print_ast_internal2(Expression *exp) {
     }
 }
 
-void print_statement(Statement* st) {
+void print_statement(Statement st) {
     switch ((st->statement_type)) {
         case STATEMENT_CALC:
             print_ast_internal2(st->statement_calc.calc);
@@ -425,63 +454,72 @@ void print_statement(Statement* st) {
     }
 }
 
+void free_ast_expression(Expression exp);
+void print_text(Text text) {
+    (void) text;
+}
+
+void print_struct_data(StructData struct_data, const char* indent) {
+    printf("%s{\n", indent);
+    for (unsigned int i = 0; i < struct_data.len; i++) {
+        printf("    %s%s %s", indent, struct_data.value[i].type.unresolved, struct_data.value[i].meta.name);
+    }
+    printf("%s}\n", indent);
+}
+
+void print_ast_method(Method method, char* indent) {
+    printf("%s%s %s(", indent, method->return_type.unresolved, method->name);
+    unsigned int i;
+    if (method->arguments.len) {
+        for (i = 0; i < method->arguments.len - 1; i++) {
+            printf("%s %s, ", method->arguments.value[i].type.unresolved, method->arguments.value[i].meta.name);
+        }
+        printf("%s %s, ", method->arguments.value[i].type.unresolved, method->arguments.value[i].meta.name);
+    }
+    printf(")");
+    print_struct_data(method->stack_data, indent);
+    printf("with code:%s\n", method->text.len ? "" : " NONE");
+    for (unsigned int i = 0; i < method->text.len; i++) {
+        printf("%s    ", indent);
+        print_text(method->text);
+        printf(";\n");
+    }
+}
+
 void print_ast_internal(void *env, const char *name, void *val) {
     int layer = *((int *) env);
     char indent[layer * 4 + 1];
     memset(indent, ' ', layer * 4);
     indent[layer * 4] = 0;
-    StackedData *entry = val;
-    switch (entry->type) {
-    case ENTRY_MODULE:;
-        printf("module %s with %d entrys:\n", name, entry->class.class_content->count);
+    UnresolvedEntry entry = val;
+    switch (entry->entry_type) {
+    case ENTRY_PACKAGE:;
+        Package package = (Package) entry;
+        printf("package %s with %d entrys:\n", name, package->package_content.count);
         layer++;
-        string_dict_complex_foreach(entry->class.class_content, print_ast_internal, &layer);
+        string_dict_complex_foreach(&package->package_content, print_ast_internal, &layer);
+        break;
+    case ENTRY_MODULE:;
+        Module module = (Module) entry;
+        printf("module %s with %d entrys:\n", name, module->module_content.count);
+        layer++;
+        string_dict_complex_foreach(&module->module_content, print_ast_internal, &layer);
         break;
     case ENTRY_CLASS:;
-        printf("%sclass %s with %d entrys:\n", indent, entry->name, entry->class.class_content->count);
+        Class class = (Class) entry;
+        printf("%sclass %s with %d entrys:\n", indent, name, class->class_content.count);
         layer++;
-        string_dict_complex_foreach(entry->class.class_content, print_ast_internal, &layer);
+        string_dict_complex_foreach(&class->class_content, print_ast_internal, &layer);
         break;
-    case ENTRY_METHOD:
-        printf("%s%s %s(", indent, entry->method.return_type, name);
-        unsigned int i;
-        if (entry->method.arg_count) {
-            for (i = 0; i < entry->method.arg_count - 1; i++) {
-                printf("%s %s, ", entry->method.args[i].type, entry->method.args[i].name);
-            }
-            printf("%s %s", entry->method.args[i].type, entry->method.args[i].name);
-        }
-        printf(") with code:%s\n", entry->method.exec_text_size ? "" : " NONE");
-        for (unsigned int i = 0; i < entry->method.exec_text_size; i++) {
-            printf("%s    ", indent);
-            print_statement(entry->method.exec_text[i]);
-            printf(";\n");
-        }
-        break;
-    case ENTRY_METHOD_TABLE:
-        printf("%smethod %s with %d overloaded variant(s):\n", indent, name, entry->method_table.len);
+    case ENTRY_METHODS:;
+        MethodTable table = (MethodTable) entry;
+        printf("%smethod %s with %d overloaded variant(s):\n", indent, name, table->len);
         layer++;
-        for (unsigned int i = 0; i < entry->method_table.len; i++) {
-            print_ast_internal(&layer, name, entry->method_table.methods[i]);
+        for (unsigned int i = 0; i < table->len; i++) {
+            print_ast_method(table->value[i], indent);
         }
         break;
-    case ENTRY_VARIABLE:
-        printf("%s%s %s = ", indent, entry->var.type, name);
-        if (entry->var.exec_text) {
-            print_ast_internal2(entry->var.exec_text);
-        }
-        else {
-            printf("NONE");
-        }
-        printf(";\n");
-        break;
-    case ENTRY_ERROR:
-        make_error(entry->causing->line_content, entry->causing->line_in_file, entry->causing->char_in_line,
-                   entry->causing->text_len, entry->name);
-        break;
-    case ERROR_TYPE:
-        printf("detected fatal internal error - error type detected - %d\n", __LINE__);
-        exit(1);
+    case ENTRY_FIELD:
         break;
     }
 }
@@ -491,198 +529,94 @@ void print_ast(StringDict *dict) {
     string_dict_complex_foreach(dict, print_ast_internal, &layer);
 }
 
-void print_single_result_internal(void *enviroment, const char *name, void *val) {
-    int layer = *((int *)enviroment);
-    char indent[layer * 4 + 1];
-    memset(indent, ' ', layer * 4);
-    indent[layer * 4] = 0;
-    StackedData *entry = val;
-    switch (entry->type) {
-    case ENTRY_CLASS:;
-        layer++;
-        printf("%sclass %s", indent, name);
-        if (entry->class.derives_from) {
-            printf(" derives from ");
-            print_accessor_str(entry->class.derives_from);
-        }
-        if (entry->class.implements_len) {
-            printf(" implements ");
-            unsigned int i;
-            for (i = 0; i < entry->class.implements_len - 1; i++) {
-                print_accessor_str(entry->class.implements[i]);
-                printf(", ");
-            }
-            print_accessor_str(entry->class.implements[i]);
-        }
-        printf(" with %d entrys:\n", entry->class.class_content->count);
-        string_dict_complex_foreach(entry->class.class_content, print_single_result_internal, &layer);
-        break;
-    case ENTRY_METHOD:
-        printf("%s%s %s(", indent, entry->method.return_type, name);
-        unsigned int i;
-        if (entry->method.arg_count) {
-            for (i = 0; i < entry->method.arg_count - 1; i++) {
-                printf("%s %s, ", entry->method.args[i].type, entry->method.args[i].name);
-            }
-            printf("%s %s", entry->method.args[i].type, entry->method.args[i].name);
-        }
-        printf(")\n");
-        break;
-    case ENTRY_METHOD_TABLE:
-        printf("%smethod %s with %d overloaded variant(s):\n", indent, name, entry->method_table.len);
-        layer++;
-        for (unsigned int i = 0; i < entry->method_table.len; i++) {
-            print_single_result_internal(&layer, name, entry->method_table.methods[i]);
-        }
-        break;
-    case ENTRY_VARIABLE:
-        printf("%s%s %s\n", indent, entry->var.type, name);
-        break;
-    case ENTRY_ERROR:
-        make_error(entry->causing->line_content, entry->causing->line_in_file, entry->causing->char_in_line,
-                   entry->causing->text_len, entry->name);
-        break;
-    case ENTRY_MODULE:
-    case ERROR_TYPE:
-        printf("detected fatal internal error - error type detected - %d\n", __LINE__);
-        exit(1);
-        break;
-    }
+void free_ast_expression(Expression exp) {
+    (void) exp;
 }
 
-void print_single_result(const char *key, void *val) {
-    StackedData *entry = val;
-    int env = 0;
-    print_single_result_internal(&env, key, entry);
-}
-
-void print_scan_result(StringDict *content) {
-    string_dict_foreach(content, print_single_result);
-}
-
-void free_ast_expression(Expression* exp) {
-    if (exp == NULL) return;
-    switch (exp->expression_type) {
-    case EXPRESSION_CALL:
-        for (int i = 0; exp->expression_call.args[i]; i++) {
-            free_ast_expression(exp->expression_call.args[i]);
-        }
-        free(exp->expression_call.args);
-        break;
-    case EXPRESSION_OPEN_PARANTHESIS_GUARD:
-        printf("fatal internal error detected - %d", __LINE__);
-        exit(1);
-    case EXPRESSION_ASSIGN:
-    case EXPRESSION_OPERATOR:
-        if (exp->expression_operator.left) free_ast_expression(exp->expression_operator.left);
-        if (exp->expression_operator.right) free_ast_expression(exp->expression_operator.right);
-        break;
-    case EXPRESSION_UNARY_OPERATOR:
-        free_ast_expression(exp->expression_operator.left);
-        break;
-    case EXPRESSION_INDEX:
-        free_ast_expression(exp->expression_index.from);
-        free_ast_expression(exp->expression_index.key);
-    case EXPRESSION_VAR:
-    case EXPRESSION_FIXED_VALUE:
-        break;
-    }
-    free(exp);
-}
-
-void free_ast_statements(Statement** st) {
-    for (; *st; st++) {
-        switch (((*st)->statement_type)) {
+void free_ast_statements(Text st) {
+    for (uint32_t i = 0; i < st.len; i++) {
+        switch (st.statements[i]->statement_type) {
             case STATEMENT_CALC:
-                free_ast_expression((*st)->statement_calc.calc);
+                free_ast_expression(st.statements[i]->statement_calc.calc);
                 break;
             case STATEMENT_FOR:
-                free_ast_expression((*st)->statement_for.condition);
-                free_ast_statements((*st)->statement_for.first);
-                free_ast_statements((*st)->statement_for.last);
-                free_ast_statements((*st)->statement_for.text);
+                free_ast_expression(st.statements[i]->statement_for.condition);
+                free_ast_statements(st.statements[i]->statement_for.first);
+                free_ast_statements(st.statements[i]->statement_for.last);
+                free_ast_statements(st.statements[i]->statement_for.text);
                 break;
             case STATEMENT_IF:
-                free_ast_expression((*st)->statement_if.condition);
-                free_ast_statements((*st)->statement_if.on_true);
-                free_ast_statements((*st)->statement_if.on_false);
+                free_ast_expression(st.statements[i]->statement_if.condition);
+                free_ast_statements(st.statements[i]->statement_if.on_true);
+                free_ast_statements(st.statements[i]->statement_if.on_false);
                 break;
             case STATEMENT_RETURN:
-                free_ast_expression((*st)->statement_return.return_value);
+                free_ast_expression(st.statements[i]->statement_return.return_value);
                 break;
             case STATEMENT_SWITCH:
                 printf("switch is not implemented yet\n");
                 exit(1);
             case STATEMENT_WHILE:
-                free_ast_expression((*st)->statement_while.condition);
-                free_ast_statements((*st)->statement_while.text);
+                free_ast_expression(st.statements[i]->statement_while.condition);
+                free_ast_statements(st.statements[i]->statement_while.text);
                 break;
         }
-        free(*st);
+        free(st.statements);
     }
 }
 
-void free_arg(const char *key, void *val) {
-    (void) key;
-    free(val);
+void free_struct_data(StructData struct_data) {
+    for (uint32_t i = 0; i < struct_data.len; i++) {
+        free(struct_data.value[i].meta.name);
+        free(struct_data.value[i].type.unresolved);
+    }
 }
 
 void free_ast(const char *key, void *val) {
-    StackedData *entry = val;
-    switch (entry->type) {
-    case ENTRY_MODULE:
-        string_dict_foreach(entry->class.class_content, free_ast);
-        string_dict_destroy(entry->class.class_content);
-        free(entry->class.class_content);
+    (void) key;
+    UnresolvedEntry entry = val;
+    switch (entry->entry_type) {
+    case ENTRY_MODULE:;
+        Module module = (Module) entry;
+        string_dict_foreach(&module->module_content, free_ast);
+        string_dict_destroy(&module->module_content);
+        free_ast_statements(module->text);
         break;
-    case ENTRY_CLASS:
+    case ENTRY_CLASS:;
+        Class class = (Class) entry;
         free(entry->name);
-        string_dict_foreach(entry->class.class_content, free_ast);
-        string_dict_destroy(entry->class.class_content);
-        for (unsigned int i = 0; i < entry->class.implements_len; i++) {
-            free(entry->class.implements[i]);
+        string_dict_foreach(&class->class_content, free_ast);
+        string_dict_destroy(&class->class_content);
+        free(class->implements.values);
+        if (class->implements.values)
+            free(class->implements.values);
+        if (class->implements.values)
+            free(class->implements.values);
+        break;
+    case ENTRY_METHODS:;
+        MethodTable methods = (MethodTable) entry;
+        for (uint32_t i = 0; i < methods->len; i++) {
+            Method method = methods->value[i];
+            free_ast_statements(method->text);
+            free_struct_data(method->arguments);
+            free_struct_data(method->stack_data);
+            free(method->return_type.unresolved);
+            free(method->name);
+            free(method);
         }
-        if (entry->class.implements)
-            free(entry->class.implements);
-        if (entry->class.derives_from)
-            free(entry->class.derives_from);
-        free(entry->class.class_content);
         break;
-    case ENTRY_METHOD:
-        free(entry->name);
-        free(entry->method.return_type);
-        if (entry->method.exec_text) {
-            free_ast_statements(entry->method.exec_text);
-            free(entry->method.exec_text);
-        }
-        for (unsigned int i = 0; i < entry->method.arg_count; i++) {
-            free(entry->method.args[i].name);
-            free(entry->method.args[i].type);
-        }
-        string_dict_foreach(entry->method.local_scope, free_arg);
-        string_dict_destroy(entry->method.local_scope);
-        free(entry->method.local_scope);
-        free(entry->method.args);
+    case ENTRY_PACKAGE:;
+        Package package = (Package) entry;
+        string_dict_foreach(&package->package_content, free_ast);
+        string_dict_destroy(&package->package_content);
         break;
-    case ENTRY_METHOD_TABLE:
-        for (unsigned int i = 0; i < entry->method_table.len; i++) {
-            free_ast(key, entry->method_table.methods[i]);
-        }
-        free(entry->method_table.methods);
-        break;
-    case ENTRY_VARIABLE:
-        free(entry->name);
-        free(entry->var.type);
-        if (entry->var.exec_text) free_ast_expression(entry->var.exec_text);
-        break;
-    case ENTRY_ERROR:
-        free(entry->name);
-        break;
-    case ERROR_TYPE:
-        printf("detected fatal internal error - error type detected - %d\n", __LINE__);
-        exit(1);
+    case ENTRY_FIELD:;
+        Field field = (Field) entry;
+        free(field->type.unresolved);
         break;
     }
+    if (entry->name)
+        free(entry->name);
     free(entry);
 }
 
@@ -748,6 +682,27 @@ int strcreplace(char* str, char search, char replace, int len) {
     return len;
 }
 
+UnresolvedEntry pack(Module module, char* path) {
+    char* name = path;
+    for (; *path; path++) {
+        if (*path == '/') {
+            name = path + 1;
+        }
+    }
+    char* end = path;
+    for (path = name; *path; path++) {
+        if (*path == '.') {
+            end = path;
+            break;
+        }
+    }
+    unsigned long len = (unsigned long) end - (unsigned long) name;
+    module->meta.name = malloc(len + 1);
+    memcpy(module->meta.name, name, len);
+    module->meta.name[len] = 0;
+    return &module->meta;
+}
+
 int main(int argc, char **argv) {
     verify_files(argc, argv);
     StringDict general_identifier_dict;
@@ -766,25 +721,18 @@ int main(int argc, char **argv) {
         file_contents[i - 1] = file_content;
         set_enviroment(argv[i]);
         TokenList token_list = lex(file_content);
+        has_errors |= token_list.has_error;
         token_lists[i - 1] = token_list;
         print_tokens(token_list);
         printf("\n");
-        unsigned int index = 0;
-        StringDict* content = scan_content(token_list, &index, true);
-        StackedData* content_wrapper = calloc(sizeof(StackedData), 1);
-        content_wrapper->class.class_content = content;
-        content_wrapper->type = ENTRY_MODULE;
-        if (content) {
-            print_scan_result(content);
-            printf("\n");
-            int len = strcreplace(enviroment, '.', '\0', sizeof(enviroment));
-            string_dict_put(&general_identifier_dict, enviroment, content_wrapper);
-            strcreplace(enviroment, '\0', '.', len);
+        Module module = parse(token_list);
+        if (module) {
+            string_dict_put(&general_identifier_dict, module->meta.name, module);
         }
-        if (token_list.has_error)
+        else {
             has_errors = true;
+        }
     }
-    has_errors |= parse(&general_identifier_dict);
     print_ast(&general_identifier_dict);
 
     printf("%s\n", has_errors ? "errors found" : "error free code");
