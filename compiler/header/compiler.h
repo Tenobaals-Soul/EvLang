@@ -106,7 +106,8 @@ typedef struct Class* Class;
 typedef struct Field* Field;
 typedef struct MethodTable* MethodTable;
 
-UnresolvedEntry get_from_ident_dot_seq(StringDict* src, const char* name, TokenList* tokens, int token_index, bool throw);
+UnresolvedEntry get_from_ident_dot_seq(StringDict* src, const char* name,
+                                       TokenList* tokens, int token_index, bool throw);
 
 struct Text {
     Statement* statements;

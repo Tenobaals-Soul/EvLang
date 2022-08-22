@@ -28,7 +28,7 @@ const char* get_enviroment() {
 void message_internal(const char* color_code, const char* line, const char* source,
                       unsigned int line_no, unsigned int char_no, unsigned int len,
                       const char* message, va_list l) {
-    printf("%s %u:%u %s%s%s: ", enviroment, line_no, char_no, color_code, source, "\033[0m");
+    printf("%s %u:%u %s%s%s: ", enviroment, line_no, char_no + 1, color_code, source, "\033[0m");
     len -= char_no;
     vprintf(message, l);
     printf("\n");
@@ -69,6 +69,7 @@ void message_internal(const char* color_code, const char* line, const char* sour
         }
         printf("\033[0m\n");
     }
+    fflush(stdout);
 }
 
 UnresolvedEntry get_from_ident_dot_seq(StringDict *src, const char *name, TokenList *tokens, int token_index, bool throw) {
