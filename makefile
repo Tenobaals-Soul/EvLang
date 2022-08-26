@@ -19,7 +19,12 @@ remove_executables:
 set_debug: 
 	$(eval CFLAGS += $(DEBUG_FLAGS))
 
+set_no_opt: 
+	$(eval CFLAGS = -O0 -Wall -Wextra -DDEBUG -g)
+
 debug: set_debug all
+
+no_opt: set_no_opt all
 
 SRCS := $(shell find $(SRC_DIR) -name '*.c')
 OBJS := $(SRCS:$(SRC_DIR)/%=$(BUILD_DIR)/%.o)

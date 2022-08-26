@@ -36,7 +36,7 @@ typedef enum TokenType {
     K_PUBLIC_TOKEN, K_PROTECTED_TOKEN,
     K_PRIVATE_TOKEN, K_CLASS_TOKEN, K_DERIVES_TOKEN,
     K_IMPLEMENTS_TOKEN, K_STATIC_TOKEN,
-    C_IF_TOKEN, C_FOR_TOKEN, C_WHILE_TOKEN,
+    C_IF_TOKEN, C_ELSE_TOKEN, C_FOR_TOKEN, C_WHILE_TOKEN,
     C_BREAK_TOKEN, C_RETURN_TOKEN,
     C_SWITCH_TOKEN, C_CASE_TOKEN,
     C_DEFAULT_TOKEN, ASSIGN_TOKEN
@@ -79,11 +79,17 @@ void make_error(const char * line, unsigned int line_no, unsigned int char_no,
 void make_warning(const char* line, unsigned int line_no, unsigned int char_no, 
         unsigned int len, const char * warning_message, ...);
 
+void make_debug_message(const char *line, unsigned int line_no, unsigned int char_no,
+                  unsigned int len, const char *warning_message, ...);
+
 void vmake_error(const char * line, unsigned int line_no, unsigned int char_no, 
         unsigned int len, const char * error_message, va_list l);
 
 void vmake_warning(const char* line, unsigned int line_no, unsigned int char_no, 
         unsigned int len, const char * warning_message, va_list l);
+
+void vmake_debug_message(const char *line, unsigned int line_no, unsigned int char_no,
+                  unsigned int len, const char *warning_message, va_list l);
 
 void free_ast(const char* key, void* val);
 

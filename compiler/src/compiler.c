@@ -29,7 +29,6 @@ void message_internal(const char* color_code, const char* line, const char* sour
                       unsigned int line_no, unsigned int char_no, unsigned int len,
                       const char* message, va_list l) {
     printf("%s %u:%u %s%s%s: ", enviroment, line_no, char_no + 1, color_code, source, "\033[0m");
-    len -= char_no;
     vprintf(message, l);
     printf("\n");
     unsigned int print_len = 0;
@@ -118,7 +117,7 @@ void vmake_warning(const char *line, unsigned int line_no, unsigned int char_no,
 
 void vmake_debug_message(const char *line, unsigned int line_no, unsigned int char_no,
                   unsigned int len, const char *warning_message, va_list l) {
-    message_internal("\033[93m", line, "<DEBUG>", line_no, char_no, len, warning_message, l);
+    message_internal("\033[36m", line, "<DEBUG>", line_no, char_no, len, warning_message, l);
 }
 
 void make_error(const char *line, unsigned int line_no, unsigned int char_no,
@@ -303,6 +302,9 @@ void print_tokens(TokenList l) {
             break;
         case C_IF_TOKEN:
             printf("\033[94m%s\033[0m", "if");
+            break;
+        case C_ELSE_TOKEN:
+            printf("\033[94m%s\033[0m", "else");
             break;
         case C_RETURN_TOKEN:
             printf("\033[94m%s\033[0m", "return");
@@ -728,6 +730,7 @@ int main(int argc, char **argv) {
         printf("\n");
         Module module = parse(token_list);
         if (module) {
+            module->meta.name = strmcpy(get_enviroment());
             string_dict_put(&general_identifier_dict, module->meta.name, module);
         }
         else {

@@ -250,6 +250,7 @@ static int t_get_number(current_read_data* cr, const char** src, TokenList* list
 }
 
 static int t_get_str(current_read_data * cr, const char ** src, TokenList * list) {
+    unsigned long src_begin = (unsigned long) *src;
     if (**src == '\"') {
         ++*src;
         unsigned long len = 0;
@@ -260,7 +261,7 @@ static int t_get_str(current_read_data * cr, const char ** src, TokenList * list
         memcpy(str, *src, len);
         str[len] = 0;
         *src += len + 1;
-        list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
+        list->tokens[list->cursor].char_in_line = (src_begin - (unsigned long) cr->line_begin);
         list->tokens[list->cursor].line_in_file = cr->current_line;
         list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = len + 2;
@@ -475,6 +476,7 @@ void init_keyword_dict(StringDict * dict) {
     string_dict_put(dict, "implements", (void*) K_IMPLEMENTS_TOKEN);
 
     string_dict_put(dict, "if", (void*) C_IF_TOKEN);
+    string_dict_put(dict, "else", (void*) C_ELSE_TOKEN);
     string_dict_put(dict, "for", (void*) C_FOR_TOKEN);
     string_dict_put(dict, "while", (void*) C_WHILE_TOKEN);
     string_dict_put(dict, "break", (void*) C_BREAK_TOKEN);
