@@ -1,5 +1,6 @@
 #include<stack.h>
 #include<stdlib.h>
+#include<mmemory.h>
 
 #define ceil_div(x, y) ((x + y - 1) / y)
 #define ceil(x, ceil) (ceil_div(x, ceil) * ceil)
@@ -7,18 +8,18 @@
 void init_stack(Stack* stack) {
     stack->bcapacity = STACK_CAPACITY_STEP;
     stack->bsize = 0;
-    stack->bdata = malloc(stack->bcapacity);
+    stack->bdata = mmalloc(stack->bcapacity);
 }
 
-static inline void realloc_on_full(Stack* stack, int push_s) {
+static inline void mrealloc_on_full(Stack* stack, int push_s) {
     if (ceil_div(stack->bsize, push_s) * push_s < stack->bcapacity) {
         stack->bcapacity += STACK_CAPACITY_STEP;
-        stack->bdata = realloc(stack->bdata, stack->bcapacity);
+        stack->bdata = mrealloc(stack->bdata, stack->bcapacity);
     }
 }
 
 #define implement_push(type) {\
-    realloc_on_full(stack, sizeof(type));\
+    mrealloc_on_full(stack, sizeof(type));\
     ((type*) stack->bdata)[ceil_div(stack->bsize, sizeof(type))] = val;\
     stack->bsize += sizeof(type);\
 }
@@ -59,13 +60,13 @@ void* pop_ptr(Stack* stack) implement_pop(void*)
 void destroy_stack(Stack* stack) {
     stack->bsize = 0;
     stack->bcapacity = 0;
-    if (stack->bdata) free(stack->bdata);
+    if (stack->bdata) mfree(stack->bdata);
     stack->bdata = NULL;
 }
 
 void* stack_disown(Stack* stack) {
     void* to_ret = stack->bdata;
-    to_ret = realloc(to_ret, stack->bsize);
+    to_ret = mrealloc(to_ret, stack->bsize);
     stack->bsize = 0;
     stack->bcapacity = 0;
     stack->bdata = NULL;

@@ -9,12 +9,6 @@
 #include<stdarg.h>
 #include<stack.h>
 
-char* strmcpy(const char* src) {
-    char* new_str = malloc(strlen(src) + 1);
-    strcpy(new_str, src);
-    return new_str;
-}
-
 #define ALLOW_NONE                  (0)
 #define ALLOW_ALL                   (~0)
 #define ALLOW_VARIALBE_DECLARATION  (1 << 1)
@@ -106,7 +100,7 @@ static struct state insert_function(struct state_args args, struct state state, 
     }
     MethodTable methods = (MethodTable) entry;
     methods->len++;
-    methods->value = realloc(methods->value, sizeof(*methods->value) * methods->len);
+    methods->value = mrealloc(methods->value, sizeof(*methods->value) * methods->len);
     methods->value[methods->len - 1] = method;
     return state;
 }

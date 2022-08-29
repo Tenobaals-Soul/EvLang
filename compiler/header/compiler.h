@@ -4,6 +4,7 @@
 #include<stdbool.h>
 #include<string_dict.h>
 #include<stdarg.h>
+#include<mmemory.h>
 
 extern bool debug_run;
 
@@ -35,7 +36,7 @@ typedef enum BasicOperator {
 } BasicOperator;
 
 typedef enum TokenType {
-    END_TOKEN = 1, IDENTIFIER_TOKEN,
+    END_TOKEN, IDENTIFIER_TOKEN,
     FIXED_VALUE_TOKEN, OPERATOR_TOKEN,
     OPEN_PARANTHESIS_TOKEN, CLOSE_PARANTHESIS_TOKEN,
     OPEN_BLOCK_TOKEN, CLOSE_BLOCK_TOKEN,
@@ -43,7 +44,8 @@ typedef enum TokenType {
     SEPERATOR_TOKEN, DOT_TOKEN,
     K_PUBLIC_TOKEN, K_PROTECTED_TOKEN,
     K_PRIVATE_TOKEN, K_CLASS_TOKEN, K_DERIVES_TOKEN,
-    K_IMPLEMENTS_TOKEN, K_STATIC_TOKEN,
+    K_IMPLEMENTS_TOKEN, K_STRUCT_TOKEN,
+    K_UNION_TOKEN, K_STATIC_TOKEN,
     C_IF_TOKEN, C_ELSE_TOKEN, C_FOR_TOKEN, C_WHILE_TOKEN,
     C_BREAK_TOKEN, C_RETURN_TOKEN,
     C_SWITCH_TOKEN, C_CASE_TOKEN,

@@ -2,18 +2,13 @@
 #include<stdlib.h>
 #include<string.h>
 #include<assert.h>
+#include<mmemory.h>
 
 struct string_dict_item {
     char* key;
     void* val;
     unsigned int hash;
 };
-
-static char* strmcpy(const char* src) {
-    char* new_str = malloc(strlen(src) + 1);
-    strcpy(new_str, src);
-    return new_str;
-}
 
 void string_dict_init(StringDict* dict) {
     dict->count = 0;
@@ -71,7 +66,7 @@ static inline void string_dict_remove(struct string_dict_item* array,
     assert(false);
 }
 
-static void realloc_dict(StringDict* dict) {
+static void mrealloc_dict(StringDict* dict) {
     struct string_dict_item* new_items = calloc(
         sizeof(struct string_dict_item),
         dict->capacity + STRING_DICT_TABLE_SIZE
@@ -82,13 +77,13 @@ static void realloc_dict(StringDict* dict) {
         struct string_dict_item item = dict->items[i];
         string_dict_set(new_items, dict->capacity + STRING_DICT_TABLE_SIZE, item);
     } while(i);
-    free(dict->items);
+    mfree(dict->items);
     dict->items = new_items;
     dict->capacity += STRING_DICT_TABLE_SIZE;
 }
 
 void string_dict_put(StringDict* dict, const char* key, void* val) {
-    if (dict->count == dict->capacity) realloc_dict(dict);
+    if (dict->count == dict->capacity) mrealloc_dict(dict);
     unsigned int raw_hash = hash_string(key);
     unsigned int hash = raw_hash % dict->capacity;
     if (val == NULL) {
@@ -132,9 +127,9 @@ void string_dict_destroy(StringDict* dict) {
     do {
         i--;
         char* key = dict->items[i].key;
-        if (key) free(key);
+        if (key) mfree(key);
     } while(i);
-    if (dict->items) free(dict->items);
+    if (dict->items) mfree(dict->items);
 }
 
 void string_dict_foreach(StringDict* dict, void (*action)(const char* key, void* val)) {

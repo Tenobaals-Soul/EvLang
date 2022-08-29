@@ -155,7 +155,7 @@ char* append_accessor_str(char *src, char *append) {
         i++;
     }
     int n_len = strlen(append);
-    src = realloc(src, i + n_len + 2);
+    src = mrealloc(src, i + n_len + 2);
     strcpy(src + i, append);
     src[i + n_len + 1] = 0;
     return src;
@@ -164,13 +164,13 @@ char* append_accessor_str(char *src, char *append) {
 void print_accessor_str(char *accstr) {
     int len;
     for (len = 0; accstr[len] || accstr[len + 1]; len++);
-    char *buffer = malloc(len + 1);
+    char *buffer = mmalloc(len + 1);
     for (int i = 0; i < len; i++) {
         buffer[i] = accstr[i] ? accstr[i] : '.';
     }
     buffer[len] = 0;
     printf("%s", buffer);
-    free(buffer);
+    mfree(buffer);
 }
 
 void print_fixed_value(Token *data) {
@@ -315,6 +315,12 @@ void print_tokens(TokenList l) {
         case K_IMPLEMENTS_TOKEN:
             printf("\033[94m%s\033[0m", "implements");
             break;
+        case K_STRUCT_TOKEN:
+            printf("\033[94m%s\033[0m", "struct");
+            break;
+        case K_UNION_TOKEN:
+            printf("\033[94m%s\033[0m", "union");
+            break;
         case K_STATIC_TOKEN:
             printf("\033[94m%s\033[0m", "static");
             break;
@@ -393,13 +399,13 @@ void free_tokens(TokenList token_list) {
     for (unsigned long j = 0; j < token_list.cursor; j++) {
         Token *t = token_list.tokens + j;
         if (t->type == IDENTIFIER_TOKEN) {
-            free(t->identifier);
+            mfree(t->identifier);
         }
         else if (t->type == FIXED_VALUE_TOKEN && (t->fixed_value.type == STRING || t->fixed_value.type == CHARACTER)) {
-            free(t->fixed_value.value.string);
+            mfree(t->fixed_value.value.string);
         }
     }
-    free(token_list.tokens);
+    mfree(token_list.tokens);
 }
 
 void print_ast_internal2(Expression exp) {
@@ -594,14 +600,14 @@ void free_ast_statements(Text st) {
                 free_ast_statements(st.statements[i]->statement_while.text);
                 break;
         }
-        free(st.statements);
+        mfree(st.statements);
     }
 }
 
 void free_struct_data(StructData struct_data) {
     for (uint32_t i = 0; i < struct_data.len; i++) {
-        free(struct_data.value[i].meta.name);
-        free(struct_data.value[i].type.unresolved);
+        mfree(struct_data.value[i].meta.name);
+        mfree(struct_data.value[i].type.unresolved);
     }
 }
 
@@ -617,14 +623,14 @@ void free_ast(const char *key, void *val) {
         break;
     case ENTRY_CLASS:;
         Class class = (Class) entry;
-        free(entry->name);
+        mfree(entry->name);
         string_dict_foreach(&class->class_content, free_ast);
         string_dict_destroy(&class->class_content);
-        free(class->implements.values);
+        mfree(class->implements.values);
         if (class->implements.values)
-            free(class->implements.values);
+            mfree(class->implements.values);
         if (class->implements.values)
-            free(class->implements.values);
+            mfree(class->implements.values);
         break;
     case ENTRY_METHODS:;
         MethodTable methods = (MethodTable) entry;
@@ -633,9 +639,9 @@ void free_ast(const char *key, void *val) {
             free_ast_statements(method->text);
             free_struct_data(method->arguments);
             free_struct_data(method->stack_data);
-            free(method->return_type.unresolved);
-            free(method->name);
-            free(method);
+            mfree(method->return_type.unresolved);
+            mfree(method->name);
+            mfree(method);
         }
         break;
     case ENTRY_PACKAGE:;
@@ -645,12 +651,12 @@ void free_ast(const char *key, void *val) {
         break;
     case ENTRY_FIELD:;
         Field field = (Field) entry;
-        free(field->type.unresolved);
+        mfree(field->type.unresolved);
         break;
     }
     if (entry->name)
-        free(entry->name);
-    free(entry);
+        mfree(entry->name);
+    mfree(entry);
 }
 
 char *fmalloc(const char *filename) {
@@ -659,12 +665,12 @@ char *fmalloc(const char *filename) {
         return NULL;
     off_t len = lseek(fd, 0, SEEK_END);
     lseek(fd, 0, SEEK_SET);
-    char *file_content = malloc(len + 1);
+    char *file_content = mmalloc(len + 1);
     if (file_content == NULL)
         return NULL;
     ssize_t r = read(fd, file_content, len);
     if (r < 0) {
-        free(file_content);
+        mfree(file_content);
         return NULL;
     }
     close(fd);
@@ -734,7 +740,7 @@ UnresolvedEntry pack(Module module, char* path) {
         }
     }
     unsigned long len = (unsigned long) end - (unsigned long) name;
-    module->meta.name = malloc(len + 1);
+    module->meta.name = mmalloc(len + 1);
     memcpy(module->meta.name, name, len);
     module->meta.name[len] = 0;
     return &module->meta;
@@ -779,9 +785,9 @@ int main(int argc, char **argv) {
     for (int i = 0; i < argc - 1; i++) {
         if (token_lists[i].cursor == 0) continue;
         free_tokens(token_lists[i]);
-        free(file_contents[i]);
+        mfree(file_contents[i]);
     }
-    free(token_lists);
+    mfree(token_lists);
     string_dict_foreach(&general_identifier_dict, free_ast);
     string_dict_destroy(&general_identifier_dict);
 }

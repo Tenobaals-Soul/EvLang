@@ -9,7 +9,7 @@ unsigned long advance(TokenList * list, unsigned long capacity) {
     list->cursor++;
     if (list->cursor >= capacity) {
         capacity += 128;
-        list->tokens = realloc(list->tokens, sizeof(Token) * capacity);
+        list->tokens = mrealloc(list->tokens, sizeof(Token) * capacity);
     }
     return capacity;
 }
@@ -28,7 +28,7 @@ char* read_next_identifier(current_read_data* cr, const char* src, unsigned long
             if (!isascii(src[*len])) weird_characters = true;
             ++*len;
         }
-        char* found = malloc(*len + 1);
+        char* found = mmalloc(*len + 1);
         memcpy(found, src, *len);
         found[*len] = 0;
         if (weird_characters) {
@@ -74,7 +74,7 @@ void t_get_keyword_or_identifier(char* identifier, unsigned long len, current_re
     list->tokens[list->cursor].text_len = len;
     if (val) {
         list->tokens[list->cursor].type = (TokenType) val;
-        free(identifier);
+        mfree(identifier);
     }
     else {
         list->tokens[list->cursor].type = IDENTIFIER_TOKEN;
@@ -257,7 +257,7 @@ static int t_get_str(current_read_data * cr, const char ** src, TokenList * list
         while ((*src)[len] != '\"' && (*src)[len] != 0) {
             len++;
         }
-        char * str = malloc(len + 1);
+        char * str = mmalloc(len + 1);
         memcpy(str, *src, len);
         str[len] = 0;
         *src += len + 1;
@@ -280,7 +280,7 @@ static int t_get_char(current_read_data * cr, const char ** src, TokenList * lis
         while ((*src)[len] != '\'' && (*src)[len] != 0) {
             len++;
         }
-        char * str = malloc(len + 1);
+        char * str = mmalloc(len + 1);
         memcpy(str, *src, len);
         str[len] = 0;
         *src += len + 1;
@@ -442,7 +442,7 @@ unsigned int t_err(current_read_data* cr, const char** src) {
     if (len == 0) {
         while (**src && **src != '\n' && !(isspace((*src)[len]))) len++;
     }
-    char * str_buffer = malloc(len * 4 + 1);
+    char * str_buffer = mmalloc(len * 4 + 1);
     for (unsigned int i = 0; i < len; i++) {
         if (isprint((*src)[i]) || (*src)[i] < 0) {
             str_buffer[i + off] = (*src)[i];
@@ -457,7 +457,7 @@ unsigned int t_err(current_read_data* cr, const char** src) {
     }
     str_buffer[len + off] = 0;
     make_error(cr->line_begin, cr->current_line, ((unsigned long) *src - (unsigned long) cr->line_begin), len, "unrecognized token \"%s\"", str_buffer);
-    free(str_buffer);
+    mfree(str_buffer);
     return len;
 }
 
@@ -484,6 +484,8 @@ void init_keyword_dict(StringDict * dict) {
     string_dict_put(dict, "static", (void*) K_STATIC_TOKEN);
     string_dict_put(dict, "derives", (void*) K_DERIVES_TOKEN);
     string_dict_put(dict, "implements", (void*) K_IMPLEMENTS_TOKEN);
+    string_dict_put(dict, "struct", (void*) K_STRUCT_TOKEN);
+    string_dict_put(dict, "union", (void*) K_UNION_TOKEN);
 
     string_dict_put(dict, "if", (void*) C_IF_TOKEN);
     string_dict_put(dict, "else", (void*) C_ELSE_TOKEN);
@@ -514,7 +516,7 @@ TokenList lex(const char* src) {
     init_keyword_dict(&keyword_dict);
     unsigned long capacity = 128;
     TokenList list = {
-        .tokens = malloc(sizeof(Token) * capacity),
+        .tokens = mmalloc(sizeof(Token) * capacity),
         .cursor = 0
     };
     current_read_data cr = {
@@ -530,7 +532,7 @@ TokenList lex(const char* src) {
         }
     }
     string_dict_destroy(&keyword_dict);
-    list.tokens = realloc(list.tokens, sizeof(Token) * list.cursor);
+    list.tokens = mrealloc(list.tokens, sizeof(Token) * list.cursor);
     list.has_error = cr.error;
     return list;
 }
