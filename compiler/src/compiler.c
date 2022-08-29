@@ -253,6 +253,33 @@ void print_operator(BasicOperator operator) {
     case BOOL_NOT_OPERATOR:
         printf("not");
         break;
+    case INPLACE_ADD_OPERATOR:
+        printf("&=");
+        break;
+    case INPLACE_SUBTRACT_OPERATOR:
+        printf("-=");
+        break;
+    case INPLACE_MULTIPLY_OPERATOR:
+        printf("*=");
+        break;
+    case INPLACE_DIVIDE_OPERATOR:
+        printf("/=");
+        break;
+    case INPLACE_POW_OPERATOR:
+        printf("^=");
+        break;
+    case INPLACE_AND_OPERATOR:
+        printf("&=");
+        break;
+    case INPLACE_OR_OPERATOR:
+        printf("|=");
+        break;
+    case INPLACE_RSHIFT_OPERAOR:
+        printf(">>=");
+        break;
+    case INPLACE_LSHIFT_OPERATOR:
+        printf("<<=");
+        break;
     default:
         printf("detected fatal internal error - error type detected - %d\n", __LINE__);
         exit(1);

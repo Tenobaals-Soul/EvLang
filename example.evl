@@ -1,3 +1,6 @@
 int value = value + 5;
 5 + 7;
 val + val;
+if val {
+    val += val;
+}
