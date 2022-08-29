@@ -128,6 +128,10 @@ struct state scan_expect_operator(struct state_args args, struct state state) {
         }
         state.token_index++;
         break;
+    case DOT_TOKEN:
+        state.call = scan_expect_value;
+        state.token_index++;
+        break;
     case END_TOKEN:
         if (args.allowed_states & ALLOW_SEMICOLON_EXPRESSION) {
             state.call = scan_start;
@@ -140,6 +144,61 @@ struct state scan_expect_operator(struct state_args args, struct state state) {
     default:
     error:
         if (avoid_throw(args, state)) {
+            state.call = NULL;
+        }
+        else {
+            throw(token, "expected an operator");
+            state.error = true;
+            state.call = basic_recover;
+        }
+        break;
+    }
+    return state;
+}
+
+struct state scan_found_function_argument(struct state_args args, struct state state);
+
+struct state get_function_arg(struct state_args args, struct state state) {
+    struct state n_state = state;
+    n_state.call = scan_expect_value;
+    n_state.token_index++;
+    init_stack(&n_state.paranthesis);
+    n_state = parse_internal(args.tokens, n_state, SET(SEPERATOR_TOKEN) |
+                                SET(CLOSE_PARANTHESIS_TOKEN), ALLOW_NONE);
+    state.token_index = n_state.token_index;
+    state.error = n_state.error;
+    state.had_error = n_state.had_error;
+    state.call = scan_found_function_argument;
+    if (state.error) state.call = NULL;
+    return state;
+}
+
+struct state scan_expect_operator_allow_call(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    debug_log_throw(token, "%s", __func__);
+    switch (token->type) {
+    case OPEN_PARANTHESIS_TOKEN:
+        state = get_function_arg(args, state);
+        break;
+    default:
+        state.call = scan_expect_operator;
+    }
+    return state;
+}
+
+struct state scan_found_function_argument(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    debug_log_throw(token, "%s", __func__);
+    switch (token->type) {
+    case SEPERATOR_TOKEN:
+        state = get_function_arg(args, state);
+        break;
+    case CLOSE_PARANTHESIS_TOKEN:
+        state.token_index++;
+        state.call = scan_expect_operator;
+        break;
+    default:
+        if (avoid_throw(args, state)){
             state.call = NULL;
         }
         else {
@@ -183,7 +242,7 @@ struct state scan_found_first_identifier(struct state_args args, struct state st
         state.call = scan_found_second_identifier;
     }
     else {
-        state.call = scan_expect_operator;
+        state.call = scan_expect_operator_allow_call;
     }
     return state;
 }
@@ -203,24 +262,23 @@ struct state scan_expect_value(struct state_args args, struct state state) {
         break;
     case IDENTIFIER_TOKEN:
         state.token_index++;
-        state.call = scan_expect_operator;
+        state.call = scan_expect_operator_allow_call;
         break;
     case OPEN_BLOCK_TOKEN:
         n_state = state;
         n_state.call = scan_start;
         n_state.token_index++;
         init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, ALLOW_NONE, ALLOW_NONE);
+        n_state = parse_internal(args.tokens, n_state, ALLOW_NONE, ALLOW_SEMICOLON_EXPRESSION);
         state.token_index = n_state.token_index + 1;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
         state.call = scan_start;
         break;
-    case CLOSE_BLOCK_TOKEN:
-        state.token_index++;
-        if (peek_chr(&state.paranthesis) == 0) {
-            state.call = NULL;
-        }
+    case SEPERATOR_TOKEN:
+        throw(token, "unexpected token");
+        state.call = basic_recover;
+        state.error = true;
         break;
     default:
         if (avoid_throw(args, state)) {
@@ -247,6 +305,19 @@ struct state scan_start(struct state_args args, struct state state) {
         state.token_index++;
         state.call = scan_found_first_identifier;
         break;
+    case OPEN_BLOCK_TOKEN:
+        push_chr(&state.paranthesis, '{');
+        state.token_index++;
+        break;
+    case CLOSE_BLOCK_TOKEN:
+        if (peek_chr(&state.paranthesis) == '{') {
+            pop_chr(&state.paranthesis);
+            state.token_index++;
+        }
+        else {
+            goto error;
+        }
+        break;
     case C_IF_TOKEN:
         n_state = state;
         n_state.call = scan_start;
@@ -261,6 +332,7 @@ struct state scan_start(struct state_args args, struct state state) {
         state.call = scan_start;
         break;
     default:
+        error:
         state.call = scan_expect_value;
     }
     return state;
@@ -274,7 +346,7 @@ struct state parse_internal(TokenList tokens, struct state start_state,
         .tokens = tokens,
         .allowed_states = allowed_states
     };
-    while (1) {
+    for (;;) {
         if (state.token_index >= tokens.cursor) break;
         if (state.call) state = state.call(state_args, state);
         else return state;

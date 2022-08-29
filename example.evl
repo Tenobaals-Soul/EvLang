@@ -1,5 +1,5 @@
-int value = value + 5;
-5 + 7;
+int value = value.val + 5;
+foo(5, bar(), );
 val + val;
 if val {
     val += val;
