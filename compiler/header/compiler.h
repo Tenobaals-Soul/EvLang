@@ -5,6 +5,8 @@
 #include<string_dict.h>
 #include<stdarg.h>
 
+extern bool debug_run;
+
 // "src\0\0", "append\0" -> "src\0append\0\0"
 char* append_accessor_str(char* src, char* append);
 

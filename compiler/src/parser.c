@@ -113,7 +113,7 @@ static struct state insert_function(struct state_args args, struct state state, 
 
 struct state scan_expect_operator(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
-    debug_log_throw(token, "%s", __func__);
+    if (debug_run) debug_log_throw(token, "%s", __func__);
     switch (token->type) {
     case OPERATOR_TOKEN:
         state.token_index++;
@@ -175,7 +175,7 @@ struct state get_function_arg(struct state_args args, struct state state) {
 
 struct state scan_expect_operator_allow_call(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
-    debug_log_throw(token, "%s", __func__);
+    if (debug_run) debug_log_throw(token, "%s", __func__);
     switch (token->type) {
     case OPEN_PARANTHESIS_TOKEN:
         state = get_function_arg(args, state);
@@ -188,7 +188,7 @@ struct state scan_expect_operator_allow_call(struct state_args args, struct stat
 
 struct state scan_found_function_argument(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
-    debug_log_throw(token, "%s", __func__);
+    if (debug_run) debug_log_throw(token, "%s", __func__);
     switch (token->type) {
     case SEPERATOR_TOKEN:
         state = get_function_arg(args, state);
@@ -213,7 +213,7 @@ struct state scan_found_function_argument(struct state_args args, struct state s
 
 struct state scan_found_second_identifier(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
-    debug_log_throw(token, "%s", __func__);
+    if (debug_run) debug_log_throw(token, "%s", __func__);
     switch (token->type) {
     case ASSIGN_TOKEN:
         state.call = scan_expect_value;
@@ -235,7 +235,7 @@ struct state scan_found_second_identifier(struct state_args args, struct state s
 
 struct state scan_found_first_identifier(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
-    debug_log_throw(token, "%s", __func__);
+    if (debug_run) debug_log_throw(token, "%s", __func__);
     if (token->type == IDENTIFIER_TOKEN) {
         state.positional_identifier[1] = token->identifier;
         state.token_index++;
@@ -249,7 +249,7 @@ struct state scan_found_first_identifier(struct state_args args, struct state st
 
 struct state scan_expect_value(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
-    debug_log_throw(token, "%s", __func__);
+    if (debug_run) debug_log_throw(token, "%s", __func__);
     struct state n_state;
     switch (token->type) {
     case FIXED_VALUE_TOKEN:
@@ -297,7 +297,7 @@ struct state scan_expect_value(struct state_args args, struct state state) {
 
 struct state scan_start(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
-    debug_log_throw(token, "%s", __func__);
+    if (debug_run) debug_log_throw(token, "%s", __func__);
     struct state n_state;
     switch (token->type) {
     case IDENTIFIER_TOKEN:

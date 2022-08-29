@@ -8,6 +8,9 @@
 #include <string.h>
 #include <ctype.h>
 #include <parser.h>
+#include <stdbool.h>
+
+bool debug_run = false;
 
 static char enviroment[256] = "unspecified enviroment";
 
@@ -672,6 +675,10 @@ char *fmalloc(const char *filename) {
 void verify_files(int argc, char** argv) {
     bool exit_err = false;
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--internal-debug") == 0) {
+            debug_run = true;
+            continue;
+        }
         if (access(argv[i], R_OK)) {
             printf("file \"%s\" could not be found\n", argv[i]);
             exit_err = true;
@@ -738,9 +745,10 @@ int main(int argc, char **argv) {
     StringDict general_identifier_dict;
     string_dict_init(&general_identifier_dict);
     char *file_contents[argc - 1];
-    TokenList *token_lists = malloc(sizeof(TokenList) * (argc - 1));
+    TokenList *token_lists = calloc(sizeof(TokenList), argc - 1);
     bool has_errors = false;
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--internal-debug") == 0) continue;
         if (string_dict_get(&general_identifier_dict, argv[i]))
             continue;
         char *file_content = fmalloc(argv[i]);
@@ -769,6 +777,7 @@ int main(int argc, char **argv) {
     printf("%s\n", has_errors ? "errors found" : "error free code");
     
     for (int i = 0; i < argc - 1; i++) {
+        if (token_lists[i].cursor == 0) continue;
         free_tokens(token_lists[i]);
         free(file_contents[i]);
     }
