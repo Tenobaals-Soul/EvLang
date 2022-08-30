@@ -1,6 +1,15 @@
-int value = value.val + 5;
-foo(5, bar(), );
-val + val;
-if val {
-    val += val;
+public struct my_struct {
+    int my_int;
+    char my_char = 5;
+    String my_string;
 }
+
+private namespace not_yours {
+    static struct my_struct {
+        int my_int;
+        char my_char = 5;
+        String my_string;
+    }
+}
+
+int i = 0;

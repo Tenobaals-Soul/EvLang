@@ -297,6 +297,9 @@ void print_tokens(TokenList l) {
         case END_TOKEN:
             printf(";");
             break;
+        case K_NAMESPACE_TOKEN:
+            printf("\033[94m%s\033[0m", "namespace");
+            break;
         case K_CLASS_TOKEN:
             printf("\033[94m%s\033[0m", "class");
             break;

@@ -7,13 +7,13 @@
 struct string_dict_item {
     char* key;
     void* val;
-    unsigned int hash;
+    unsigned int raw_hash;
 };
 
 void string_dict_init(StringDict* dict) {
     dict->count = 0;
     dict->capacity = STRING_DICT_TABLE_SIZE;
-    dict->items = calloc(sizeof(struct string_dict_item), dict->capacity);
+    dict->items = mcalloc(sizeof(struct string_dict_item) * dict->capacity);
 }
 
 static int hash_string(const char* string) {
@@ -26,8 +26,9 @@ static int hash_string(const char* string) {
 
 static inline void string_dict_set(struct string_dict_item* array,
                                    unsigned int capacity,
+                                   unsigned int hash,
                                    struct string_dict_item new) {
-    for (unsigned int i = new.hash; i < capacity; i++) {
+    for (unsigned int i = hash; i < capacity; i++) {
         if (array[i].key == NULL || strcmp(array[i].key, new.key) == 0) {
             array[i] = new;
             return;
@@ -66,16 +67,17 @@ static inline void string_dict_remove(struct string_dict_item* array,
     assert(false);
 }
 
-static void mrealloc_dict(StringDict* dict) {
-    struct string_dict_item* new_items = calloc(
-        sizeof(struct string_dict_item),
+static void realloc_dict(StringDict* dict) {
+    struct string_dict_item* new_items = mcalloc(
+        sizeof(struct string_dict_item) *
         dict->capacity + STRING_DICT_TABLE_SIZE
     );
     unsigned int i = dict->capacity;
     do {
         i--;
         struct string_dict_item item = dict->items[i];
-        string_dict_set(new_items, dict->capacity + STRING_DICT_TABLE_SIZE, item);
+        string_dict_set(new_items, dict->capacity + STRING_DICT_TABLE_SIZE,
+                        item.raw_hash % dict->capacity, item);
     } while(i);
     mfree(dict->items);
     dict->items = new_items;
@@ -83,15 +85,16 @@ static void mrealloc_dict(StringDict* dict) {
 }
 
 void string_dict_put(StringDict* dict, const char* key, void* val) {
-    if (dict->count == dict->capacity) mrealloc_dict(dict);
-    unsigned int raw_hash = hash_string(key);
-    unsigned int hash = raw_hash % dict->capacity;
+    if (dict->count == dict->capacity) realloc_dict(dict);
+    unsigned int raw_hash = hash_string(key)  % dict->capacity;
+    unsigned int hash = raw_hash;
     if (val == NULL) {
         string_dict_remove(dict->items, dict->capacity, key, hash);
         dict->count--;
     }
     else {
-        string_dict_set(dict->items, dict->capacity, (struct string_dict_item) {strmcpy(key), val, raw_hash});
+        string_dict_set(dict->items, dict->capacity, hash,
+                        (struct string_dict_item) {strmcpy(key), val, raw_hash});
         dict->count++;
     }
 }

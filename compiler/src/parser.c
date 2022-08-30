@@ -15,6 +15,7 @@
 #define ALLOW_FUNCTION_DEFINITION   (1 << 2)
 #define ALLOW_CLASS_DEFINITION      (1 << 3)
 #define ALLOW_SEMICOLON_EXPRESSION  (1 << 4)
+#define ALLOW_STATEMENTS            (1 << 5)
 
 #define SET(x) (1 << (x))
 
@@ -213,6 +214,10 @@ struct state scan_found_second_identifier(struct state_args args, struct state s
         state.call = scan_expect_value;
         state.token_index++;
         break;
+    case END_TOKEN:
+        state.call = scan_start;
+        state.token_index++;
+        break;
     default:
         if (avoid_throw(args, state)) {
             state.call = NULL;
@@ -289,6 +294,288 @@ struct state scan_expect_value(struct state_args args, struct state state) {
     return state;
 }
 
+
+
+struct state scan_expect_namespace_begin(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    if (debug_run) debug_log_throw(token, "%s", __func__);
+    switch (token->type) {
+    case OPEN_BLOCK_TOKEN:
+        struct state n_state = state;
+        n_state.call = scan_start;
+        n_state.token_index++;
+        init_stack(&n_state.paranthesis);
+        n_state = parse_internal(args.tokens, n_state, SET(CLOSE_BLOCK_TOKEN), ALLOW_ALL);
+        state.token_index = n_state.token_index;
+        state.error = n_state.error;
+        state.had_error = n_state.had_error;
+        state.call = scan_start;
+        if (state.error) state.call = NULL;
+        else state.token_index++;
+        break;
+    default:
+        if (avoid_throw(args, state)) {
+            state.call = NULL;
+        }
+        else {
+            throw(token, "expected \"{\"");
+            state.error = true;
+            state.call = basic_recover;
+            state.token_index++;
+        }
+        break;
+    }
+    return state;
+}
+
+struct state scan_expect_namespace_name(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    if (debug_run) debug_log_throw(token, "%s", __func__);
+    switch (token->type) {
+    case IDENTIFIER_TOKEN:
+        state.call = scan_expect_namespace_begin;
+        state.token_index++;
+        break;
+    default:
+        if (avoid_throw(args, state)) {
+            state.call = NULL;
+        }
+        else {
+            throw(token, "expected a name");
+            state.error = true;
+            state.call = basic_recover;
+            state.token_index++;
+        }
+        break;
+    }
+    return state;
+}
+
+struct state scan_expect_class_begin(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    if (debug_run) debug_log_throw(token, "%s", __func__);
+    switch (token->type) {
+    case OPEN_BLOCK_TOKEN:
+        struct state n_state = state;
+        n_state.call = scan_start;
+        n_state.token_index++;
+        init_stack(&n_state.paranthesis);
+        n_state = parse_internal(args.tokens, n_state, SET(CLOSE_BLOCK_TOKEN), ALLOW_ALL);
+        state.token_index = n_state.token_index;
+        state.error = n_state.error;
+        state.had_error = n_state.had_error;
+        state.call = scan_start;
+        if (state.error) state.call = NULL;
+        else state.token_index++;
+        break;
+    default:
+        if (avoid_throw(args, state)) {
+            state.call = NULL;
+        }
+        else {
+            throw(token, "expected \"{\"");
+            state.error = true;
+            state.call = basic_recover;
+            state.token_index++;
+        }
+        break;
+    }
+    return state;
+}
+
+struct state scan_expect_class_name(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    if (debug_run) debug_log_throw(token, "%s", __func__);
+    switch (token->type) {
+    case IDENTIFIER_TOKEN:
+        state.call = scan_expect_class_begin;
+        state.token_index++;
+        break;
+    default:
+        if (avoid_throw(args, state)) {
+            state.call = NULL;
+        }
+        else {
+            throw(token, "expected a name");
+            state.error = true;
+            state.call = basic_recover;
+            state.token_index++;
+        }
+        break;
+    }
+    return state;
+}
+
+struct state scan_expect_struct_begin(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    if (debug_run) debug_log_throw(token, "%s", __func__);
+    switch (token->type) {
+    case OPEN_BLOCK_TOKEN:
+        struct state n_state = state;
+        n_state.call = scan_start;
+        n_state.token_index++;
+        init_stack(&n_state.paranthesis);
+        n_state = parse_internal(args.tokens, n_state, SET(CLOSE_BLOCK_TOKEN),
+                                 ALLOW_VARIALBE_DECLARATION | ALLOW_SEMICOLON_EXPRESSION);
+        state.token_index = n_state.token_index;
+        state.error = n_state.error;
+        state.had_error = n_state.had_error;
+        state.call = scan_start;
+        if (state.error) state.call = NULL;
+        else state.token_index++;
+        break;
+    default:
+        if (avoid_throw(args, state)) {
+            state.call = NULL;
+        }
+        else {
+            throw(token, "expected \"{\"");
+            state.error = true;
+            state.call = basic_recover;
+            state.token_index++;
+        }
+        break;
+    }
+    return state;
+}
+
+struct state scan_expect_struct_name(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    if (debug_run) debug_log_throw(token, "%s", __func__);
+    switch (token->type) {
+    case IDENTIFIER_TOKEN:
+        state.call = scan_expect_struct_begin;
+        state.token_index++;
+        break;
+    default:
+        if (avoid_throw(args, state)) {
+            state.call = NULL;
+        }
+        else {
+            throw(token, "expected a name");
+            state.error = true;
+            state.call = basic_recover;
+            state.token_index++;
+        }
+        break;
+    }
+    return state;
+}
+
+
+
+struct state scan_expect_union_begin(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    if (debug_run) debug_log_throw(token, "%s", __func__);
+    switch (token->type) {
+    case OPEN_BLOCK_TOKEN:
+        struct state n_state = state;
+        n_state.call = scan_start;
+        n_state.token_index++;
+        init_stack(&n_state.paranthesis);
+        n_state = parse_internal(args.tokens, n_state, SET(CLOSE_BLOCK_TOKEN),
+                                 ALLOW_VARIALBE_DECLARATION | ALLOW_SEMICOLON_EXPRESSION);
+        state.token_index = n_state.token_index;
+        state.error = n_state.error;
+        state.had_error = n_state.had_error;
+        state.call = scan_start;
+        if (state.error) state.call = NULL;
+        else state.token_index++;
+        break;
+    default:
+        if (avoid_throw(args, state)) {
+            state.call = NULL;
+        }
+        else {
+            throw(token, "expected \"{\"");
+            state.error = true;
+            state.call = basic_recover;
+            state.token_index++;
+        }
+        break;
+    }
+    return state;
+}
+
+struct state scan_expect_union_name(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    if (debug_run) debug_log_throw(token, "%s", __func__);
+    switch (token->type) {
+    case IDENTIFIER_TOKEN:
+        state.call = scan_expect_union_begin;
+        state.token_index++;
+        break;
+    default:
+        if (avoid_throw(args, state)) {
+            state.call = NULL;
+        }
+        else {
+            throw(token, "expected a name");
+            state.error = true;
+            state.call = basic_recover;
+            state.token_index++;
+        }
+        break;
+    }
+    return state;
+}
+
+struct state scan_expect_value_or_definition_no_static(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    if (debug_run) debug_log_throw(token, "%s", __func__);
+    switch (token->type) {
+    case K_NAMESPACE_TOKEN:
+        state.call = scan_expect_namespace_name;
+        state.token_index++;
+        break;
+    case K_CLASS_TOKEN:
+        state.call = scan_expect_class_name;
+        state.token_index++;
+        break;
+    case K_STRUCT_TOKEN:
+        state.call = scan_expect_struct_name;
+        state.token_index++;
+        break;
+    case K_UNION_TOKEN:
+        state.call = scan_expect_union_name;
+        state.token_index++;
+        break;
+    default:
+        state.call = scan_expect_value;
+    }
+    return state;
+}
+
+struct state scan_expect_value_or_definition_no_accessor(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    if (debug_run) debug_log_throw(token, "%s", __func__);
+    switch (token->type) {
+    case K_STATIC_TOKEN:
+        state.call = scan_expect_value_or_definition_no_static;
+        state.token_index++;
+        break;
+    default:
+        state.call = scan_expect_value_or_definition_no_static;
+    }
+    return state;
+}
+
+struct state scan_expect_value_or_definition(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    if (debug_run) debug_log_throw(token, "%s", __func__);
+    switch (token->type) {
+    case K_PRIVATE_TOKEN:
+    case K_PROTECTED_TOKEN:
+    case K_PUBLIC_TOKEN:
+        state.call = scan_expect_value_or_definition_no_accessor;
+        state.token_index++;
+        break;
+    default:
+        state.call = scan_expect_value_or_definition_no_accessor;
+    }
+    return state;
+}
+
 struct state scan_start(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
@@ -327,7 +614,7 @@ struct state scan_start(struct state_args args, struct state state) {
         break;
     default:
         error:
-        state.call = scan_expect_value;
+        state.call = scan_expect_value_or_definition;
     }
     return state;
 }
