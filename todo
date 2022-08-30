@@ -3,15 +3,22 @@
 ## necessary
 - [x] read files
 - [x] tokenize
-- [ ] parse files
-- [ ] statement parsing
-- [ ] control structures
-    - [ ] return
-    - [ ] if
-    - [ ] else
-    - [ ] while
-    - [ ] for
-    - [ ] switch
+- [ ] parseing
+    - [x] statement parsing
+    - [x] namespaces
+    - [x] classes
+    - [x] structs
+    - [x] unsions
+    - [ ] control structures
+        - [ ] return
+        - [x] if
+        - [ ] else
+        - [ ] while
+        - [ ] for
+        - [ ] switch
+    - [ ] convert to tree
+        - [ ] statements
+        - [ ] full structure
 - [ ] scope checking (superclasses)
     - [ ] accessability checks
 - [ ] interfaces
