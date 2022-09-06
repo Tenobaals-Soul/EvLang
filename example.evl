@@ -4,11 +4,19 @@ public struct my_struct {
     String my_string;
 }
 
+i++;
+
 private namespace not_yours {
-    static struct my_struct {
+    struct my_struct {
         int my_int;
         char my_char = 5;
         String my_string;
+    }
+
+    my_struct data;
+
+    for int i = 0; i < 5, true; i++ {
+        
     }
 }
 

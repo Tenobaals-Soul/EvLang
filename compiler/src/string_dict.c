@@ -34,33 +34,9 @@ static inline void string_dict_set(struct string_dict_item* array,
             return;
         }
     };
-    for (unsigned int i = 0; i < capacity; i++) {
+    for (unsigned int i = 0; i < hash; i++) {
         if (array[i].key == NULL || strcmp(array[i].key, new.key) == 0) {
             array[i] = new;
-            return;
-        }
-    };
-    assert(false);
-}
-
-static inline void string_dict_remove(struct string_dict_item* array,
-                                      unsigned int capacity,
-                                      const char* key, unsigned int hash) {
-    for (unsigned int i = hash; i < capacity; i++) {
-        if (array[i].key == NULL) {
-            return;
-        }
-        if (strcmp(array[i].key, key) == 0) {
-            array[i] = (struct string_dict_item) {0};
-            return;
-        }
-    };
-    for (unsigned int i = 0; i < capacity; i++) {
-        if (array[i].key == NULL) {
-            return;
-        }
-        if (strcmp(array[i].key, key) == 0) {
-            array[i] = (struct string_dict_item) {0};
             return;
         }
     };
@@ -86,17 +62,11 @@ static void realloc_dict(StringDict* dict) {
 
 void string_dict_put(StringDict* dict, const char* key, void* val) {
     if (dict->count == dict->capacity) realloc_dict(dict);
-    unsigned int raw_hash = hash_string(key)  % dict->capacity;
-    unsigned int hash = raw_hash;
-    if (val == NULL) {
-        string_dict_remove(dict->items, dict->capacity, key, hash);
-        dict->count--;
-    }
-    else {
-        string_dict_set(dict->items, dict->capacity, hash,
-                        (struct string_dict_item) {strmcpy(key), val, raw_hash});
-        dict->count++;
-    }
+    unsigned int raw_hash = hash_string(key);
+    unsigned int hash = raw_hash % dict->capacity;
+    string_dict_set(dict->items, dict->capacity, hash,
+                    (struct string_dict_item) {strmcpy(key), val, raw_hash});
+    dict->count++;
 }
 
 void* string_dict_get(StringDict* dict, const char* key) {

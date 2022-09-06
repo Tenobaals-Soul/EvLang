@@ -16,8 +16,18 @@
 #define ALLOW_CLASS_DEFINITION      (1 << 3)
 #define ALLOW_SEMICOLON_EXPRESSION  (1 << 4)
 #define ALLOW_STATEMENTS            (1 << 5)
+#define ALLOW_CONTROL_STRUCTURES    (1 << 6)
 
 #define SET(x) (1 << (x))
+
+#define IS_POSTFIX_UNARY(operator) (!!((1 << (operator)) & (\
+    SET(ADD_OPERATOR) | SET(SUBTRACT_OPERATOR) |\
+    SET(BINARY_NOT_OPERATOR) | SET(BOOL_NOT_OPERATOR)\
+)))
+
+#define IS_PREFIX_UNARY(operator) (!!((1 << (operator)) & (\
+    SET(INCREMENT_OPERATOR) | SET(DECREMENT_OPERATOR)\
+)))
 
 struct state parse_internal(TokenList tokens, struct state start_state,
                             int no_throw_tokens, int allowed_states);
@@ -71,23 +81,25 @@ struct state scan_expect_operator(struct state_args args, struct state state);
 struct state scan_expect_value(struct state_args args, struct state state);
 
 struct state basic_recover(struct state_args args, struct state state) {
-    debug_log_throw(&args.tokens.tokens[state.token_index], "%s", __func__);
+    if (debug_run) debug_log_throw(&args.tokens.tokens[state.token_index], "%s", __func__);
     state.error = true;
     if (args.tokens.tokens[state.token_index].type == END_TOKEN ||
         args.tokens.tokens[state.token_index].type == CLOSE_BLOCK_TOKEN) {
         state.call = NULL;
     }
-    state.token_index++;
+    else {
+        state.token_index++;
+    }
     return state;
 }
 
 static struct state insert_function(struct state_args args, struct state state, Token* token) {
-    Method method = calloc(sizeof(struct Method), 1);
+    Method method = mcalloc(sizeof(struct Method));
     method->name = strmcpy(state.positional_identifier[1]);
     method->return_type.unresolved = strmcpy(state.positional_identifier[0]);
     UnresolvedEntry entry = string_dict_get(state.scope, method->name);
     if (entry == NULL) {
-        MethodTable methods = calloc(sizeof(struct MethodTable), 1);
+        MethodTable methods = mcalloc(sizeof(struct MethodTable));
         methods->meta.entry_type = ENTRY_METHODS;
         methods->meta.line = args.tokens.tokens[state.token_index - 1].line_in_file;
         methods->meta.name = strmcpy(method->name);
@@ -112,7 +124,9 @@ struct state scan_expect_operator(struct state_args args, struct state state) {
     switch (token->type) {
     case OPERATOR_TOKEN:
         state.token_index++;
-        state.call = scan_start;
+        state.call = IS_PREFIX_UNARY(token->operator_type)
+            ? scan_expect_operator
+            : scan_expect_value;
         break;
     case CLOSE_PARANTHESIS_TOKEN:
         if (peek_chr(&state.paranthesis) != '(') {
@@ -235,7 +249,8 @@ struct state scan_found_second_identifier(struct state_args args, struct state s
 struct state scan_found_first_identifier(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
-    if (token->type == IDENTIFIER_TOKEN) {
+    if (token->type == IDENTIFIER_TOKEN && (args.allowed_states & ALLOW_VARIALBE_DECLARATION ||
+        args.allowed_states & ALLOW_FUNCTION_DEFINITION)) {
         state.positional_identifier[1] = token->identifier;
         state.token_index++;
         state.call = scan_found_second_identifier;
@@ -251,6 +266,15 @@ struct state scan_expect_value(struct state_args args, struct state state) {
     if (debug_run) debug_log_throw(token, "%s", __func__);
     struct state n_state;
     switch (token->type) {
+    case OPERATOR_TOKEN:
+        state.token_index++;
+        if (IS_POSTFIX_UNARY(token->operator_type)) {
+            state.call = scan_expect_value;
+        }
+        else {
+            goto error;
+        }
+        break;
     case FIXED_VALUE_TOKEN:
         state.token_index++;
         state.call = scan_expect_operator;
@@ -280,6 +304,7 @@ struct state scan_expect_value(struct state_args args, struct state state) {
         state.error = true;
         break;
     default:
+error:
         if (avoid_throw(args, state)) {
             state.call = NULL;
         }
@@ -576,6 +601,93 @@ struct state scan_expect_value_or_definition(struct state_args args, struct stat
     return state;
 }
 
+struct state scan_found_second_for_statement(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    if (debug_run) debug_log_throw(token, "%s", __func__);
+    struct state n_state;
+    switch (token->type) {
+    case END_TOKEN:
+        n_state = state;
+        n_state.call = scan_expect_value;
+        n_state.token_index++;
+        init_stack(&n_state.paranthesis);
+        n_state = parse_internal(args.tokens, n_state, SET(OPEN_BLOCK_TOKEN),
+                                 ALLOW_VARIALBE_DECLARATION);
+        state.token_index = n_state.token_index;
+        state.error = n_state.error;
+        state.had_error = n_state.had_error;
+        if (!state.error) state.call = scan_start;
+        break;
+    case SEPERATOR_TOKEN:
+        n_state = state;
+        n_state.call = scan_expect_value;
+        n_state.token_index++;
+        init_stack(&n_state.paranthesis);
+        n_state = parse_internal(args.tokens, n_state, SET(END_TOKEN) | SET(SEPERATOR_TOKEN),
+                                 ALLOW_VARIALBE_DECLARATION);
+        state.token_index = n_state.token_index;
+        state.error = n_state.error;
+        state.had_error = n_state.had_error;
+        if (!state.error) state.call = scan_found_second_for_statement;
+        break;
+    default:
+        if (avoid_throw(args, state)) {
+            state.call = NULL;
+        }
+        else {
+            throw(token, "expecten an , or ; after an expression");
+            state.error = true;
+            state.call = basic_recover;
+            state.token_index++;
+        }
+        break;
+    }
+    return state;
+}
+
+struct state scan_found_first_for_statement(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    if (debug_run) debug_log_throw(token, "%s", __func__);
+    struct state n_state;
+    switch (token->type) {
+    case END_TOKEN:
+        n_state = state;
+        n_state.call = scan_expect_value;
+        n_state.token_index++;
+        init_stack(&n_state.paranthesis);
+        n_state = parse_internal(args.tokens, n_state, SET(END_TOKEN) | SET(SEPERATOR_TOKEN),
+                                 ALLOW_VARIALBE_DECLARATION);
+        state.token_index = n_state.token_index;
+        state.error = n_state.error;
+        state.had_error = n_state.had_error;
+        if (!state.error) state.call = scan_found_second_for_statement;
+        break;
+    case SEPERATOR_TOKEN:
+        n_state = state;
+        n_state.call = scan_expect_value;
+        n_state.token_index++;
+        init_stack(&n_state.paranthesis);
+        n_state = parse_internal(args.tokens, n_state, SET(END_TOKEN) | SET(SEPERATOR_TOKEN),
+                                 ALLOW_VARIALBE_DECLARATION);
+        state.token_index = n_state.token_index;
+        state.error = n_state.error;
+        state.had_error = n_state.had_error;
+        if (!state.error) state.call = scan_found_first_for_statement;
+        break;
+    default:
+        if (avoid_throw(args, state)) {
+            state.call = NULL;
+        }
+        else {
+            throw(token, "expecten an , or ; after an expression");
+            state.error = true;
+            state.call = basic_recover;
+            state.token_index++;
+        }
+    }
+    return state;
+}
+
 struct state scan_start(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
@@ -595,13 +707,12 @@ struct state scan_start(struct state_args args, struct state state) {
             pop_chr(&state.paranthesis);
             state.token_index++;
         }
-        else {
-            goto error;
-        }
+        else goto error;
         break;
     case C_IF_TOKEN:
+        if (!(args.allowed_states & ALLOW_CONTROL_STRUCTURES)) goto error;
         n_state = state;
-        n_state.call = scan_start;
+        n_state.call = scan_expect_value;
         n_state.token_index++;
         init_stack(&n_state.paranthesis);
         n_state = parse_internal(args.tokens, n_state,
@@ -611,6 +722,22 @@ struct state scan_start(struct state_args args, struct state state) {
         state.error = n_state.error;
         state.had_error = n_state.had_error;
         state.call = scan_start;
+        break;
+    case C_FOR_TOKEN:
+        if (!(args.allowed_states & ALLOW_CONTROL_STRUCTURES)) goto error;
+        n_state = state;
+        n_state.call = scan_start;
+        n_state.token_index++;
+        init_stack(&n_state.paranthesis);
+        n_state = parse_internal(args.tokens, n_state, SET(END_TOKEN) | SET(SEPERATOR_TOKEN),
+                                 ALLOW_VARIALBE_DECLARATION);
+        state.token_index = n_state.token_index;
+        state.error = n_state.error;
+        state.had_error = n_state.had_error;
+        if (!state.error) state.call = scan_found_first_for_statement;
+        break;
+    case END_TOKEN:
+        state.token_index++;
         break;
     default:
         error:
@@ -637,7 +764,7 @@ struct state parse_internal(TokenList tokens, struct state start_state,
 }
 
 Module parse(TokenList tokens) {
-    Module module = calloc(sizeof(struct Module), 1);
+    Module module = mcalloc(sizeof(struct Module));
     string_dict_init(&module->module_content);
     struct state state = {
         .call = scan_start,

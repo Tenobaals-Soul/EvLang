@@ -7,6 +7,7 @@
     - [x] statement parsing
     - [x] namespaces
     - [x] classes
+        - [ ] subclasses
     - [x] structs
     - [x] unsions
     - [ ] control structures
@@ -16,6 +17,7 @@
         - [ ] while
         - [ ] for
         - [ ] switch
+    - [ ] function calls
     - [ ] convert to tree
         - [ ] statements
         - [ ] full structure

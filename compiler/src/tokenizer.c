@@ -338,6 +338,9 @@ static int try_extract_operator(current_read_data* cr, const char** src, TokenLi
     if (make_operator(cr, src, list, INPLACE_RSHIFT_OPERAOR,    ">>=")) return 1;
     if (make_operator(cr, src, list, INPLACE_LSHIFT_OPERATOR,   "<<=")) return 1;
 
+    if (make_operator(cr, src, list, INCREMENT_OPERATOR,    "++")) return 1;
+    if (make_operator(cr, src, list, DECREMENT_OPERATOR,    "--")) return 1;
+
     if (make_operator(cr, src, list, ADD_OPERATOR,          "+")) return 1;
     if (make_operator(cr, src, list, SUBTRACT_OPERATOR,     "-")) return 1;
     if (make_operator(cr, src, list, MULTIPLY_OPERATOR,     "*")) return 1;

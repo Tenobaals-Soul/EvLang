@@ -228,7 +228,6 @@ void print_operator(BasicOperator operator) {
     case BINARY_NOT_OPERATOR:
         printf("~");
         break;
-
     case EQUALS_OPERATOR:
         printf("==");
         break;
@@ -283,8 +282,14 @@ void print_operator(BasicOperator operator) {
     case INPLACE_LSHIFT_OPERATOR:
         printf("<<=");
         break;
+    case INCREMENT_OPERATOR:
+        printf("++");
+        break;
+    case DECREMENT_OPERATOR:
+        printf("--");
+        break;
     default:
-        printf("detected fatal internal error - error type detected - %d\n", __LINE__);
+        printf("detected fatal internal error - error type %d detected - %d\n", operator, __LINE__);
         exit(1);
     }
 }
@@ -754,7 +759,7 @@ int main(int argc, char **argv) {
     StringDict general_identifier_dict;
     string_dict_init(&general_identifier_dict);
     char *file_contents[argc - 1];
-    TokenList *token_lists = calloc(sizeof(TokenList), argc - 1);
+    TokenList *token_lists = mcalloc(sizeof(TokenList) * (argc - 1));
     bool has_errors = false;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--internal-debug") == 0) continue;
