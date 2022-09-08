@@ -305,9 +305,6 @@ void print_tokens(TokenList l) {
         case K_NAMESPACE_TOKEN:
             printf("\033[94m%s\033[0m", "namespace");
             break;
-        case K_CLASS_TOKEN:
-            printf("\033[94m%s\033[0m", "class");
-            break;
         case K_PRIVATE_TOKEN:
             printf("\033[94m%s\033[0m", "private");
             break;
@@ -316,9 +313,6 @@ void print_tokens(TokenList l) {
             break;
         case K_PUBLIC_TOKEN:
             printf("\033[94m%s\033[0m", "public");
-            break;
-        case K_DERIVES_TOKEN:
-            printf("\033[94m%s\033[0m", "derives");
             break;
         case K_IMPLEMENTS_TOKEN:
             printf("\033[94m%s\033[0m", "implements");
@@ -329,8 +323,8 @@ void print_tokens(TokenList l) {
         case K_UNION_TOKEN:
             printf("\033[94m%s\033[0m", "union");
             break;
-        case K_STATIC_TOKEN:
-            printf("\033[94m%s\033[0m", "static");
+        case K_EXTENDS_TOKEN:
+            printf("\033[94m%s\033[0m", "extends");
             break;
         case C_BREAK_TOKEN:
             printf("\033[94m%s\033[0m", "break");

@@ -545,16 +545,12 @@ struct state scan_expect_union_name(struct state_args args, struct state state) 
     return state;
 }
 
-struct state scan_expect_value_or_definition_no_static(struct state_args args, struct state state) {
+struct state scan_expect_value_or_definition_no_accessor(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
     switch (token->type) {
     case K_NAMESPACE_TOKEN:
         state.call = scan_expect_namespace_name;
-        state.token_index++;
-        break;
-    case K_CLASS_TOKEN:
-        state.call = scan_expect_class_name;
         state.token_index++;
         break;
     case K_STRUCT_TOKEN:
@@ -567,20 +563,6 @@ struct state scan_expect_value_or_definition_no_static(struct state_args args, s
         break;
     default:
         state.call = scan_expect_value;
-    }
-    return state;
-}
-
-struct state scan_expect_value_or_definition_no_accessor(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case K_STATIC_TOKEN:
-        state.call = scan_expect_value_or_definition_no_static;
-        state.token_index++;
-        break;
-    default:
-        state.call = scan_expect_value_or_definition_no_static;
     }
     return state;
 }
@@ -721,7 +703,7 @@ struct state scan_start(struct state_args args, struct state state) {
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
-        state.call = scan_start;
+        if (!state.error) state.call = scan_start;
         break;
     case C_FOR_TOKEN:
         if (!(args.allowed_states & ALLOW_CONTROL_STRUCTURES)) goto error;
@@ -735,6 +717,20 @@ struct state scan_start(struct state_args args, struct state state) {
         state.error = n_state.error;
         state.had_error = n_state.had_error;
         if (!state.error) state.call = scan_found_first_for_statement;
+        break;
+    case C_WHILE_TOKEN:
+        if (!(args.allowed_states & ALLOW_CONTROL_STRUCTURES)) goto error;
+        n_state = state;
+        n_state.call = scan_start;
+        n_state.token_index++;
+        init_stack(&n_state.paranthesis);
+        n_state = parse_internal(args.tokens, n_state, 
+            SET(OPEN_BLOCK_TOKEN) | SET(END_TOKEN) | SET(IDENTIFIER_TOKEN) | SET(C_IF_TOKEN) |
+            SET(C_RETURN_TOKEN) | SET(C_FOR_TOKEN) | SET(C_WHILE_TOKEN), ALLOW_NONE);
+        state.token_index = n_state.token_index;
+        state.error = n_state.error;
+        state.had_error = n_state.had_error;
+        if (!state.error) state.call = scan_start;
         break;
     case END_TOKEN:
         state.token_index++;
@@ -773,7 +769,7 @@ Module parse(TokenList tokens) {
     };
     init_stack(&state.paranthesis);
     while (state.token_index < tokens.cursor) {
-        state = parse_internal(tokens, state, ALLOW_NONE, ALLOW_SEMICOLON_EXPRESSION);
+        state = parse_internal(tokens, state, ALLOW_NONE, ALLOW_ALL);
         state.call = scan_start;
     }
     if (state.had_error) {

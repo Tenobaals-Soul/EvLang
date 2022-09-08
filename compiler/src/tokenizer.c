@@ -484,10 +484,7 @@ void init_keyword_dict(StringDict* dict) {
     string_dict_put(dict, "protected", (void*) K_PROTECTED_TOKEN);
     string_dict_put(dict, "private", (void*) K_PRIVATE_TOKEN);
     string_dict_put(dict, "namespace", (void*) K_NAMESPACE_TOKEN);
-    string_dict_put(dict, "class", (void*) K_CLASS_TOKEN);
-    string_dict_put(dict, "static", (void*) K_STATIC_TOKEN);
-    string_dict_put(dict, "derives", (void*) K_DERIVES_TOKEN);
-    string_dict_put(dict, "implements", (void*) K_IMPLEMENTS_TOKEN);
+    string_dict_put(dict, "extends", (void*) K_EXTENDS_TOKEN);
     string_dict_put(dict, "struct", (void*) K_STRUCT_TOKEN);
     string_dict_put(dict, "union", (void*) K_UNION_TOKEN);
 
