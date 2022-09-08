@@ -15,7 +15,7 @@
         - [x] while
         - [x] for
         - [ ] switch
-    - [ ] scalar initialisation
+    - [x] scalar initialisation
     - [x] function calls
     - [ ] convert to tree
         - [ ] statements
