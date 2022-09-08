@@ -261,6 +261,42 @@ struct state scan_found_first_identifier(struct state_args args, struct state st
     return state;
 }
 
+struct state found_scalar_initialisation_expression(struct state_args args, struct state state) {
+    Token* token = &args.tokens.tokens[state.token_index];
+    if (debug_run) debug_log_throw(token, "%s", __func__);
+    struct state n_state;
+    switch (token->type) {
+    case SEPERATOR_TOKEN:
+        n_state = state;
+        n_state.call = scan_start;
+        n_state.token_index++;
+        init_stack(&n_state.paranthesis);
+        n_state = parse_internal(args.tokens, n_state, SET(SEPERATOR_TOKEN) | SET(CLOSE_BLOCK_TOKEN),
+                                 ALLOW_SEMICOLON_EXPRESSION);
+        state.token_index = n_state.token_index;
+        state.error = n_state.error;
+        state.had_error = n_state.had_error;
+        state.call = found_scalar_initialisation_expression;
+        break;
+    case CLOSE_BLOCK_TOKEN:
+        state.token_index++;
+        state.call = scan_expect_operator;
+        break;
+    default:
+        if (avoid_throw(args, state)) {
+            state.call = NULL;
+        }
+        else {
+            throw(token, "expected , or }");
+            state.error = true;
+            state.call = basic_recover;
+            state.token_index++;
+        }
+        break;
+    }
+    return state;
+}
+
 struct state scan_expect_value(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
@@ -292,13 +328,15 @@ struct state scan_expect_value(struct state_args args, struct state state) {
         n_state.call = scan_start;
         n_state.token_index++;
         init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, ALLOW_NONE, ALLOW_SEMICOLON_EXPRESSION);
-        state.token_index = n_state.token_index + 1;
+        n_state = parse_internal(args.tokens, n_state, SET(SEPERATOR_TOKEN) | SET(CLOSE_BLOCK_TOKEN),
+                                 ALLOW_SEMICOLON_EXPRESSION);
+        state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
-        state.call = scan_start;
+        state.call = found_scalar_initialisation_expression;
         break;
     case SEPERATOR_TOKEN:
+        // this needs to be done for function arguments
         throw(token, "unexpected token");
         state.call = basic_recover;
         state.error = true;

@@ -6,24 +6,22 @@
 - [ ] parseing
     - [x] statement parsing
     - [x] namespaces
-    - [x] classes
-        - [ ] subclasses
     - [x] structs
     - [x] unsions
     - [ ] control structures
         - [ ] return
         - [x] if
         - [ ] else
-        - [ ] while
-        - [ ] for
+        - [x] while
+        - [x] for
         - [ ] switch
-    - [ ] function calls
+    - [ ] scalar initialisation
+    - [x] function calls
     - [ ] convert to tree
         - [ ] statements
         - [ ] full structure
-- [ ] scope checking (superclasses)
+- [ ] scope checking
     - [ ] accessability checks
-- [ ] interfaces
 - [ ] bytecode
 - [ ] runtime execution
 

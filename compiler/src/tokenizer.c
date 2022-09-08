@@ -274,6 +274,7 @@ static int t_get_str(current_read_data * cr, const char ** src, TokenList * list
 }
 
 static int t_get_char(current_read_data * cr, const char ** src, TokenList * list) {
+    unsigned long src_begin = (unsigned long) *src;
     if (**src == '\'') {
         ++*src;
         unsigned long len = 0;
@@ -284,7 +285,7 @@ static int t_get_char(current_read_data * cr, const char ** src, TokenList * lis
         memcpy(str, *src, len);
         str[len] = 0;
         *src += len + 1;
-        list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
+        list->tokens[list->cursor].char_in_line = (src_begin - (unsigned long) cr->line_begin);
         list->tokens[list->cursor].line_in_file = cr->current_line;
         list->tokens[list->cursor].line_content = cr->line_begin;
         list->tokens[list->cursor].text_len = len + 2;
