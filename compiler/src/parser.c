@@ -896,6 +896,10 @@ struct state scan_start(struct state_args args, struct state state) {
         state.token_index++;
         state.call = scan_expect_value;
         break;
+    case C_ELSE_TOKEN:
+        state.token_index++;
+        state.call = scan_start;
+        break;
     default:
         error:
         state.call = scan_expect_value_or_definition;
