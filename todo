@@ -9,7 +9,7 @@
     - [x] structs
     - [x] unsions
     - [ ] control structures
-        - [ ] return
+        - [x] return
         - [x] if
         - [ ] else
         - [x] while
