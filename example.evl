@@ -1,21 +1,10 @@
-public struct my_struct {
-    int my_int;
-    char my_char = 5;
-    String my_string;
+int i = 4;
+i = i + i;
+i + 5;
+
+private int helper_function(int x, int y) {
+    return x + y;
 }
 
-i++;
-
-private namespace not_yours {
-    struct my_struct {
-        int my_int;
-        char my_char = 5;
-        String my_string;
-    }
-    for int i = 0; i < 5, true; i++ {
-        my_struct var = {i, 'a' + i, "hello world"};
-        print("var:", var);
-    }
-}
-
-int i = 0;
+int add(1)      = 1;
+int add(int x)  = x + add(x - 1);
