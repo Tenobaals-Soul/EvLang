@@ -129,13 +129,11 @@ struct state scan_expect_operator(struct state_args args, struct state state) {
             : scan_expect_value;
         break;
     case CLOSE_PARANTHESIS_TOKEN:
-        if (peek_chr(&state.paranthesis) != '(') {
-            goto error;
-        }
-        else {
+        if (peek_chr(&state.paranthesis) == '(') {
             pop_chr(&state.paranthesis);
+            state.token_index++;
         }
-        state.token_index++;
+        else goto error;
         break;
     case DOT_TOKEN:
         state.call = scan_expect_value;
@@ -153,6 +151,18 @@ struct state scan_expect_operator(struct state_args args, struct state state) {
     case ASSIGN_TOKEN:
         state.token_index++;
         state.call = scan_expect_value;
+        break;
+    case OPEN_INDEX_TOKEN:
+        struct state n_state = state;
+        n_state.call = scan_expect_value;
+        n_state.token_index++;
+        init_stack(&n_state.paranthesis);
+        n_state = parse_internal(args.tokens, n_state, SET(CLOSE_INDEX_TOKEN), ALLOW_NONE);
+        state.token_index = n_state.token_index + 1;
+        state.error = n_state.error;
+        state.had_error = n_state.had_error;
+        state.call = scan_expect_operator;
+        if (state.error) state.call = NULL;
         break;
     default:
     error:
@@ -734,8 +744,24 @@ struct state scan_expect_value_or_definition(struct state_args args, struct stat
         state.call = scan_expect_definition;
         state.token_index++;
         break;
+    case K_NAMESPACE_TOKEN:
+        state.call = scan_expect_namespace_name;
+        state.token_index++;
+        break;
+    case K_STRUCT_TOKEN:
+        state.call = scan_expect_struct_name;
+        state.token_index++;
+        break;
+    case K_UNION_TOKEN:
+        state.call = scan_expect_union_name;
+        state.token_index++;
+        break;
+    case IDENTIFIER_TOKEN:
+        state.token_index++;
+        state.call = scan_expect_definition_name;
+        break;
     default:
-        state.call = scan_expect_value; 
+        state.call = scan_expect_value;
     }
     return state;
 }
