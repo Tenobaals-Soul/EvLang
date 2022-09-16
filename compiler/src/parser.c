@@ -124,6 +124,7 @@ static struct state insert_function(struct state_args args, struct state state, 
 
 struct state scan_expect_operator(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
+    struct state n_state = state;
     if (debug_run) debug_log_throw(token, "%s", __func__);
     switch (token->type) {
     case OPERATOR_TOKEN:
@@ -157,7 +158,6 @@ struct state scan_expect_operator(struct state_args args, struct state state) {
         state.call = scan_expect_value;
         break;
     case OPEN_INDEX_TOKEN:
-        struct state n_state = state;
         n_state.call = scan_expect_value;
         n_state.token_index++;
         init_stack(&n_state.paranthesis);
@@ -465,9 +465,9 @@ error:
 struct state scan_expect_namespace_begin(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
+    struct state n_state = state;
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
-        struct state n_state = state;
         n_state.call = scan_start;
         n_state.token_index++;
         init_stack(&n_state.paranthesis);
@@ -521,9 +521,9 @@ struct state scan_expect_namespace_name(struct state_args args, struct state sta
 struct state scan_expect_class_begin(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
+    struct state n_state = state;
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
-        struct state n_state = state;
         n_state.call = scan_start;
         n_state.token_index++;
         init_stack(&n_state.paranthesis);
@@ -577,9 +577,9 @@ struct state scan_expect_class_name(struct state_args args, struct state state) 
 struct state scan_expect_struct_begin(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
+    struct state n_state = state;
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
-        struct state n_state = state;
         n_state.call = scan_start;
         n_state.token_index++;
         init_stack(&n_state.paranthesis);
@@ -636,9 +636,9 @@ struct state scan_expect_struct_name(struct state_args args, struct state state)
 struct state scan_expect_union_begin(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
+    struct state n_state = state;
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
-        struct state n_state = state;
         n_state.call = scan_start;
         n_state.token_index++;
         init_stack(&n_state.paranthesis);
@@ -974,11 +974,11 @@ struct state parse_internal(TokenList tokens, struct state start_state,
 Module parse(TokenList tokens) {
     Module module = mcalloc(sizeof(struct Module));
     module->meta.entry_type = ENTRY_MODULE;
-    string_dict_init(&module->module_content);
+    string_dict_init(&module->scope);
     struct state state = {
         .call = scan_start,
         .struct_data = &module->globals,
-        .scope = &module->module_content
+        .scope = &module->scope
     };
     init_stack(&state.paranthesis);
     while (state.token_index < tokens.cursor) {

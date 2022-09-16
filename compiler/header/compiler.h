@@ -120,7 +120,9 @@ typedef struct EntryBase* UnresolvedEntry;
 
 typedef struct Package* Package;
 typedef struct Module* Module;
-typedef struct Class* Class;
+typedef struct Struct* Struct;
+typedef struct Union* Union;
+typedef struct Namespace* Namespace;
 typedef struct Field* Field;
 typedef struct MethodTable* MethodTable;
 
@@ -133,7 +135,7 @@ struct Text {
 };
 
 struct Type {
-    Class resolved;
+    Struct resolved;
     char* unresolved;
 };
 
@@ -153,7 +155,9 @@ struct Method {
 enum EntryType {
     ENTRY_PACKAGE,
     ENTRY_MODULE,
-    ENTRY_CLASS,
+    ENTRY_STRUCT,
+    ENTRY_UNION,
+    ENTRY_NAMESPACE,
     ENTRY_METHODS,
     ENTRY_FIELD
 };
@@ -177,23 +181,24 @@ struct Package {
 struct Module {
     struct EntryBase meta;
     StructData globals;
-    StringDict module_content;
+    StringDict scope;
     Text text;
 };
 
-struct Class {
+struct Struct {
     struct EntryBase meta;
-    StructData static_struct;
-    StructData instance_struct;
-    StringDict class_content;
-    struct {
-        Type* values;
-        unsigned int len;
-    } derives;
-    struct {
-        Type* values;
-        unsigned int len;
-    } implements;
+    StructData data;
+};
+
+struct Union {
+    struct EntryBase meta;
+    StructData data;
+};
+
+struct Namespace {
+    struct EntryBase meta;
+    StructData struct_data;
+    StringDict scope;
 };
 
 struct MethodTable {
@@ -206,8 +211,7 @@ struct Expression {
     enum ExpressionType {
         EXPRESSION_CALL, EXPRESSION_OPERATOR, EXPRESSION_INDEX,
         EXPRESSION_UNARY_OPERATOR, EXPRESSION_FIXED_VALUE,
-        EXPRESSION_OPEN_PARANTHESIS_GUARD, EXPRESSION_VAR,
-        EXPRESSION_ASSIGN
+        EXPRESSION_VAR, EXPRESSION_ASSIGN
     } expression_type;
     union {
         Field expression_variable;

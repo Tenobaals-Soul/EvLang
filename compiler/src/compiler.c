@@ -74,7 +74,8 @@ void message_internal(const char* color_code, const char* line, const char* sour
     fflush(stdout);
 }
 
-UnresolvedEntry get_from_ident_dot_seq(StringDict *src, const char *name, TokenList *tokens, int token_index, bool throw) {
+UnresolvedEntry get_from_ident_dot_seq(StringDict* src, const char* name, TokenList* tokens,
+                                       int token_index, bool throw) {
     const char *env = enviroment;
     const char *acs = name;
     UnresolvedEntry found = NULL;
@@ -83,7 +84,7 @@ UnresolvedEntry get_from_ident_dot_seq(StringDict *src, const char *name, TokenL
         found = src ? string_dict_get(src, acs + i) : NULL;
         if (found == NULL) {
             if (throw) {
-                if (!src || src->count == 0) { // found is not a class
+                if (!src || src->count == 0) {
                     Token *t = &tokens->tokens[token_index + word * 2];
                     make_error(t->line_content, t->line_in_file, t->char_in_line,
                             t->text_len, "%s has no members", env);
@@ -98,11 +99,11 @@ UnresolvedEntry get_from_ident_dot_seq(StringDict *src, const char *name, TokenL
         }
         env = name;
         for (; acs[i]; i++);
-        if (found->entry_type == ENTRY_CLASS) {
-            src = &((Class) found)->class_content;
+        if (found->entry_type == ENTRY_NAMESPACE) {
+            src = &((Namespace) found)->scope;
         }
         else if (found->entry_type == ENTRY_MODULE) {
-            src = &((Module) found)->module_content;
+            src = &((Module) found)->scope;
         }
     }
     return found;
@@ -426,9 +427,6 @@ void print_ast_internal2(Expression exp) {
     case EXPRESSION_FIXED_VALUE:
         print_fixed_value(exp->fixed_value);
         break;
-    case EXPRESSION_OPEN_PARANTHESIS_GUARD:
-        printf("detected fatal internal error - error type detected - %d\n", __LINE__);
-        exit(1);
     case EXPRESSION_OPERATOR:
         printf("(");
         print_ast_internal2(exp->expression_operator.left);
@@ -533,15 +531,32 @@ void print_ast_internal(void *env, const char *name, void *val) {
         break;
     case ENTRY_MODULE:;
         Module module = (Module) entry;
-        printf("module %s with %d entrys:\n", name, module->module_content.count);
+        printf("module %s with %d entrys:\n", name, module->scope.count);
         layer++;
-        string_dict_complex_foreach(&module->module_content, print_ast_internal, &layer);
+        string_dict_complex_foreach(&module->scope, print_ast_internal, &layer);
         break;
-    case ENTRY_CLASS:;
-        Class class = (Class) entry;
-        printf("%sclass %s with %d entrys:\n", indent, name, class->class_content.count);
+    case ENTRY_STRUCT:;
+        Struct struct_entry = (Struct) entry;
+        printf("%sstruct %s with %d entrys:\n", indent, name, struct_entry->data.len);
+        for (unsigned int i = 0; i < struct_entry->data.len; i++) {
+            print_ast_internal(env, NULL, &struct_entry->data.value[i]);
+        }
+        break;
+    case ENTRY_UNION:;
+        Struct union_entry = (Struct) entry;
+        printf("%sunion %s with %d entrys:\n", indent, name, union_entry->data.len);
+        for (unsigned int i = 0; i < union_entry->data.len; i++) {
+            print_ast_internal(env, NULL, &union_entry->data.value[i]);
+        }
+        break;
+    case ENTRY_NAMESPACE:;
+        Namespace namespace = (Namespace) entry;
+        printf("%sunion %s with %d entrys:\n", indent, name, namespace->struct_data.len);
+        for (unsigned int i = 0; i < namespace->struct_data.len; i++) {
+            print_ast_internal(env, NULL, &namespace->struct_data.value[i]);
+        }
         layer++;
-        string_dict_complex_foreach(&class->class_content, print_ast_internal, &layer);
+        string_dict_complex_foreach(&namespace->scope, print_ast_internal, env);
         break;
     case ENTRY_METHODS:;
         MethodTable table = (MethodTable) entry;
@@ -551,7 +566,9 @@ void print_ast_internal(void *env, const char *name, void *val) {
             print_ast_method(table->value[i], indent);
         }
         break;
-    case ENTRY_FIELD:
+    case ENTRY_FIELD:;
+        Field field = (Field) entry;
+        printf("%s    %s %s\n", indent, field->type.unresolved, name);
         break;
     }
 }
@@ -610,20 +627,29 @@ void free_ast(const char *key, void *val) {
     switch (entry->entry_type) {
     case ENTRY_MODULE:;
         Module module = (Module) entry;
-        string_dict_foreach(&module->module_content, free_ast);
-        string_dict_destroy(&module->module_content);
+        string_dict_foreach(&module->scope, free_ast);
+        string_dict_destroy(&module->scope);
         free_ast_statements(module->text);
         break;
-    case ENTRY_CLASS:;
-        Class class = (Class) entry;
-        mfree(entry->name);
-        string_dict_foreach(&class->class_content, free_ast);
-        string_dict_destroy(&class->class_content);
-        mfree(class->implements.values);
-        if (class->implements.values)
-            mfree(class->implements.values);
-        if (class->implements.values)
-            mfree(class->implements.values);
+    case ENTRY_NAMESPACE:;
+        Namespace namespace = (Namespace) entry;
+        string_dict_foreach(&namespace->scope, free_ast);
+        string_dict_destroy(&namespace->scope);
+        for (unsigned int i = 0; i < namespace->struct_data.len; i++) {
+            free_ast(NULL, &namespace->struct_data.value[i]);
+        }
+        break;
+    case ENTRY_STRUCT:;
+        Struct struct_entry = (Struct) entry;
+        for (unsigned int i = 0; i < struct_entry->data.len; i++) {
+            free_ast(NULL, &struct_entry->data.value[i]);
+        }
+        break;
+    case ENTRY_UNION:;
+        Union union_entry = (Union) entry;
+        for (unsigned int i = 0; i < union_entry->data.len; i++) {
+            free_ast(NULL, &union_entry->data.value[i]);
+        }
         break;
     case ENTRY_METHODS:;
         MethodTable methods = (MethodTable) entry;
