@@ -3,7 +3,7 @@
 ## necessary
 - [x] read files
 - [x] tokenize
-- [ ] parseing
+- [ ] parsing
     - [x] statement parsing
     - [x] namespaces
     - [x] structs

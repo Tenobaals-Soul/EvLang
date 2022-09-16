@@ -329,12 +329,6 @@ void print_tokens(TokenList l) {
         case C_BREAK_TOKEN:
             printf("\033[94m%s\033[0m", "break");
             break;
-        case C_CASE_TOKEN:
-            printf("\033[94m%s\033[0m", "case");
-            break;
-        case C_DEFAULT_TOKEN:
-            printf("\033[94m%s\033[0m", "default");
-            break;
         case C_FOR_TOKEN:
             printf("\033[94m%s\033[0m", "for");
             break;
@@ -346,9 +340,6 @@ void print_tokens(TokenList l) {
             break;
         case C_RETURN_TOKEN:
             printf("\033[94m%s\033[0m", "return");
-            break;
-        case C_SWITCH_TOKEN:
-            printf("\033[94m%s\033[0m", "switch");
             break;
         case C_WHILE_TOKEN:
             printf("\033[94m%s\033[0m", "while");

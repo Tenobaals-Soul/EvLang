@@ -1,14 +1,11 @@
-namespace example {
-    public void main() {
-        if argc > 1 {
-            print("arguments were provided:");
-            for int i = 1; i < argc; i++ {
-                print(argv[i]);
-            }
-        } else {
-            print("no arguments were given");
-        }
+String str = "hello world";
+
+public void main() {
+    print("arguments were provided:");
+    for int i = 1; i < argc; i++ {
+        print(argv[i]);
     }
+    print("no arguments were given");
 }
 
 main();

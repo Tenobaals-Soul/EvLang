@@ -29,6 +29,10 @@
     SET(INCREMENT_OPERATOR) | SET(DECREMENT_OPERATOR)\
 )))
 
+#define IS_FORBIDDEN(operator) (!!((1 << (operator)) & (\
+    SET(LAMBDA_ARROW_OPERATOR)\
+)))
+
 struct state parse_internal(TokenList tokens, struct state start_state,
                             int no_throw_tokens, int allowed_states);
 
@@ -161,6 +165,7 @@ struct state scan_expect_operator(struct state_args args, struct state state) {
         state.token_index = n_state.token_index + 1;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         state.call = scan_expect_operator;
         if (state.error) state.call = NULL;
         break;
@@ -191,6 +196,7 @@ struct state get_function_arg(struct state_args args, struct state state) {
     state.token_index = n_state.token_index;
     state.error = n_state.error;
     state.had_error = n_state.had_error;
+    destroy_stack(&n_state.paranthesis);
     state.call = scan_found_function_argument;
     if (state.error) state.call = NULL;
     return state;
@@ -280,6 +286,7 @@ struct state found_function_argument_definition(struct state_args args, struct s
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         state.call = found_function_argument_definition;
         break;
     case CLOSE_PARANTHESIS_TOKEN:
@@ -323,6 +330,7 @@ struct state scan_found_second_identifier(struct state_args args, struct state s
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         state.call = found_function_argument_definition;
         break;
     default:
@@ -369,6 +377,7 @@ struct state found_scalar_initialisation_expression(struct state_args args, stru
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         state.call = found_scalar_initialisation_expression;
         break;
     case CLOSE_BLOCK_TOKEN:
@@ -426,6 +435,7 @@ struct state scan_expect_value(struct state_args args, struct state state) {
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         state.call = found_scalar_initialisation_expression;
         break;
     case SEPERATOR_TOKEN:
@@ -465,6 +475,7 @@ struct state scan_expect_namespace_begin(struct state_args args, struct state st
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         state.call = scan_start;
         if (state.error) state.call = NULL;
         else state.token_index++;
@@ -520,6 +531,7 @@ struct state scan_expect_class_begin(struct state_args args, struct state state)
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         state.call = scan_start;
         if (state.error) state.call = NULL;
         else state.token_index++;
@@ -576,6 +588,7 @@ struct state scan_expect_struct_begin(struct state_args args, struct state state
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         state.call = scan_start;
         if (state.error) state.call = NULL;
         else state.token_index++;
@@ -634,6 +647,7 @@ struct state scan_expect_union_begin(struct state_args args, struct state state)
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         state.call = scan_start;
         if (state.error) state.call = NULL;
         else state.token_index++;
@@ -781,6 +795,7 @@ struct state scan_found_second_for_statement(struct state_args args, struct stat
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         if (!state.error) state.call = scan_start;
         break;
     case SEPERATOR_TOKEN:
@@ -793,6 +808,7 @@ struct state scan_found_second_for_statement(struct state_args args, struct stat
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         if (!state.error) state.call = scan_found_second_for_statement;
         break;
     default:
@@ -825,6 +841,7 @@ struct state scan_found_first_for_statement(struct state_args args, struct state
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         if (!state.error) state.call = scan_found_second_for_statement;
         break;
     case SEPERATOR_TOKEN:
@@ -837,6 +854,7 @@ struct state scan_found_first_for_statement(struct state_args args, struct state
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         if (!state.error) state.call = scan_found_first_for_statement;
         break;
     default:
@@ -886,6 +904,7 @@ struct state scan_start(struct state_args args, struct state state) {
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         if (!state.error) state.call = scan_start;
         break;
     case C_FOR_TOKEN:
@@ -899,6 +918,7 @@ struct state scan_start(struct state_args args, struct state state) {
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         if (!state.error) state.call = scan_found_first_for_statement;
         break;
     case C_WHILE_TOKEN:
@@ -913,6 +933,7 @@ struct state scan_start(struct state_args args, struct state state) {
         state.token_index = n_state.token_index;
         state.error = n_state.error;
         state.had_error = n_state.had_error;
+        destroy_stack(&n_state.paranthesis);
         if (!state.error) state.call = scan_start;
         break;
     case END_TOKEN:
@@ -952,6 +973,7 @@ struct state parse_internal(TokenList tokens, struct state start_state,
 
 Module parse(TokenList tokens) {
     Module module = mcalloc(sizeof(struct Module));
+    module->meta.entry_type = ENTRY_MODULE;
     string_dict_init(&module->module_content);
     struct state state = {
         .call = scan_start,
@@ -963,6 +985,7 @@ Module parse(TokenList tokens) {
         state = parse_internal(tokens, state, ALLOW_NONE, ALLOW_ALL);
         state.call = scan_start;
     }
+    destroy_stack(&state.paranthesis);
     if (state.had_error) {
         free_ast(NULL, module);
         return NULL;

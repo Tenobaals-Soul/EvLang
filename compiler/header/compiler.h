@@ -51,8 +51,7 @@ typedef enum TokenType {
     C_IF_TOKEN, C_ELSE_TOKEN,
     C_FOR_TOKEN, C_WHILE_TOKEN,
     C_BREAK_TOKEN, C_RETURN_TOKEN,
-    C_SWITCH_TOKEN, C_CASE_TOKEN,
-    C_DEFAULT_TOKEN, ASSIGN_TOKEN
+    ASSIGN_TOKEN
 } TokenType;
 
 typedef struct Token {
