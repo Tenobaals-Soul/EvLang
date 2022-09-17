@@ -49,6 +49,7 @@ struct state {
     unsigned int token_index;
     Stack paranthesis;
     char* positional_identifier[4];
+    unsigned int line_no;
     union {
         UnresolvedEntry current_entry;
         Method current_method;
@@ -76,6 +77,28 @@ void debug_log_throw(Token* token, const char* format, ...) {
 
 bool avoid_throw(struct state_args args, struct state state) {
     return !!(args.ignore_throw_mask & SET(args.tokens.tokens[state.token_index].type));
+}
+
+struct state substate(struct state state, struct state_args args, StringDict* scope,
+                      struct state (*substate_start)(struct state_args, struct state),
+                      struct state (*on_exit_fine)(struct state_args, struct state),
+                      struct state (*on_exit_err)(struct state_args, struct state),
+                      int no_throw_token, int allowed_states) {
+    StringDict* old_scope = state.scope;
+    struct state n_state = state;
+    n_state.call = substate_start;
+    n_state.token_index++;
+    init_stack(&n_state.paranthesis);
+    n_state.scope = scope;
+    n_state = parse_internal(args.tokens, n_state, no_throw_token, allowed_states);
+    state.token_index = n_state.token_index;
+    state.error = n_state.error;
+    state.had_error = n_state.had_error;
+    destroy_stack(&n_state.paranthesis);
+    state.scope = old_scope;
+    if (state.error) state.call = on_exit_err;
+    else state.call = on_exit_fine;
+    return state;
 }
 
 struct state scan_start(struct state_args args, struct state state);
@@ -124,7 +147,6 @@ static struct state insert_function(struct state_args args, struct state state, 
 
 struct state scan_expect_operator(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
-    struct state n_state = state;
     if (debug_run) debug_log_throw(token, "%s", __func__);
     switch (token->type) {
     case OPERATOR_TOKEN:
@@ -158,16 +180,10 @@ struct state scan_expect_operator(struct state_args args, struct state state) {
         state.call = scan_expect_value;
         break;
     case OPEN_INDEX_TOKEN:
-        n_state.call = scan_expect_value;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, SET(CLOSE_INDEX_TOKEN), ALLOW_NONE);
-        state.token_index = n_state.token_index + 1;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        state.call = scan_expect_operator;
-        if (state.error) state.call = NULL;
+        state = substate(state, args, state.scope,
+                         scan_expect_value, scan_expect_operator,
+                         NULL, SET(CLOSE_INDEX_TOKEN), ALLOW_NONE);
+        if (!state.error) state.token_index++;
         break;
     default:
     error:
@@ -187,19 +203,9 @@ struct state scan_expect_operator(struct state_args args, struct state state) {
 struct state scan_found_function_argument(struct state_args args, struct state state);
 
 struct state get_function_arg(struct state_args args, struct state state) {
-    struct state n_state = state;
-    n_state.call = scan_expect_value;
-    n_state.token_index++;
-    init_stack(&n_state.paranthesis);
-    n_state = parse_internal(args.tokens, n_state, SET(SEPERATOR_TOKEN) |
-                                SET(CLOSE_PARANTHESIS_TOKEN), ALLOW_NONE);
-    state.token_index = n_state.token_index;
-    state.error = n_state.error;
-    state.had_error = n_state.had_error;
-    destroy_stack(&n_state.paranthesis);
-    state.call = scan_found_function_argument;
-    if (state.error) state.call = NULL;
-    return state;
+    return substate(state, args, state.scope, scan_expect_value,
+                    scan_found_function_argument, NULL, SET(SEPERATOR_TOKEN) |
+                    SET(CLOSE_PARANTHESIS_TOKEN), ALLOW_NONE);
 }
 
 struct state scan_expect_operator_allow_call(struct state_args args, struct state state) {
@@ -274,20 +280,11 @@ struct state scan_found_function_declaration(struct state_args args, struct stat
 struct state found_function_argument_definition(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
-    struct state n_state;
     switch (token->type) {
     case SEPERATOR_TOKEN:
-        n_state = state;
-        n_state.call = scan_start;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, SET(SEPERATOR_TOKEN) | SET(CLOSE_PARANTHESIS_TOKEN),
-                                 ALLOW_SEMICOLON_EXPRESSION | ALLOW_VARIALBE_DECLARATION);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        state.call = found_function_argument_definition;
+        state = substate(state, args, state.scope, scan_start, found_function_argument_definition,
+                         NULL, SET(SEPERATOR_TOKEN) | SET(CLOSE_PARANTHESIS_TOKEN),
+                         ALLOW_SEMICOLON_EXPRESSION | ALLOW_VARIALBE_DECLARATION);
         break;
     case CLOSE_PARANTHESIS_TOKEN:
         state.token_index++;
@@ -310,7 +307,6 @@ struct state found_function_argument_definition(struct state_args args, struct s
 struct state scan_found_second_identifier(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
-    struct state n_state;
     switch (token->type) {
     case ASSIGN_TOKEN:
         state.call = scan_expect_value;
@@ -321,17 +317,9 @@ struct state scan_found_second_identifier(struct state_args args, struct state s
         state.token_index++;
         break;
     case OPEN_PARANTHESIS_TOKEN:
-        n_state = state;
-        n_state.call = scan_start;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, SET(SEPERATOR_TOKEN) | SET(CLOSE_PARANTHESIS_TOKEN),
-                                 ALLOW_SEMICOLON_EXPRESSION | ALLOW_VARIALBE_DECLARATION);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        state.call = found_function_argument_definition;
+        state = substate(state, args, state.scope, scan_start, found_function_argument_definition,
+                         NULL, SET(SEPERATOR_TOKEN) | SET(CLOSE_PARANTHESIS_TOKEN),
+                         ALLOW_SEMICOLON_EXPRESSION | ALLOW_VARIALBE_DECLARATION);
         break;
     default:
         if (avoid_throw(args, state)) {
@@ -365,20 +353,12 @@ struct state scan_found_first_identifier(struct state_args args, struct state st
 struct state found_scalar_initialisation_expression(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
-    struct state n_state;
     switch (token->type) {
     case SEPERATOR_TOKEN:
-        n_state = state;
-        n_state.call = scan_start;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, SET(SEPERATOR_TOKEN) | SET(CLOSE_BLOCK_TOKEN),
-                                 ALLOW_SEMICOLON_EXPRESSION);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        state.call = found_scalar_initialisation_expression;
+        state = substate(state, args, state.scope, scan_start,
+                         found_scalar_initialisation_expression, NULL,
+                         SET(SEPERATOR_TOKEN) | SET(CLOSE_BLOCK_TOKEN),
+                         ALLOW_SEMICOLON_EXPRESSION);
         break;
     case CLOSE_BLOCK_TOKEN:
         state.token_index++;
@@ -402,7 +382,6 @@ struct state found_scalar_initialisation_expression(struct state_args args, stru
 struct state scan_expect_value(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
-    struct state n_state;
     switch (token->type) {
     case OPERATOR_TOKEN:
         state.token_index++;
@@ -426,17 +405,10 @@ struct state scan_expect_value(struct state_args args, struct state state) {
         state.call = scan_expect_operator_allow_call;
         break;
     case OPEN_BLOCK_TOKEN:
-        n_state = state;
-        n_state.call = scan_start;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, SET(SEPERATOR_TOKEN) | SET(CLOSE_BLOCK_TOKEN),
-                                 ALLOW_SEMICOLON_EXPRESSION);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        state.call = found_scalar_initialisation_expression;
+        state = substate(state, args, state.scope, scan_start,
+                         found_scalar_initialisation_expression, NULL,
+                         SET(SEPERATOR_TOKEN) | SET(CLOSE_BLOCK_TOKEN),
+                         ALLOW_SEMICOLON_EXPRESSION);
         break;
     case SEPERATOR_TOKEN:
         // this needs to be done for function arguments
@@ -460,25 +432,23 @@ error:
     return state;
 }
 
-
+Namespace make_namespace(char* name, Token* token) {
+    Namespace container = mcalloc(sizeof(struct Namespace));
+    container->meta.entry_type = ENTRY_NAMESPACE;
+    container->meta.name = strmcpy(name);
+    container->meta.line = token->line_in_file;
+    string_dict_init(&container->scope);
+    return container;
+}
 
 struct state scan_expect_namespace_begin(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
-    struct state n_state = state;
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
-        n_state.call = scan_start;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, SET(CLOSE_BLOCK_TOKEN), ALLOW_ALL);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        state.call = scan_start;
-        if (state.error) state.call = NULL;
-        else state.token_index++;
+        state = substate(state, args, state.scope, scan_start,
+                         scan_start, NULL, SET(CLOSE_BLOCK_TOKEN), ALLOW_ALL);
+        if (!state.error) state.token_index++;
         break;
     default:
         if (avoid_throw(args, state)) {
@@ -500,63 +470,8 @@ struct state scan_expect_namespace_name(struct state_args args, struct state sta
     if (debug_run) debug_log_throw(token, "%s", __func__);
     switch (token->type) {
     case IDENTIFIER_TOKEN:
+        state.positional_identifier[0] = token->identifier;
         state.call = scan_expect_namespace_begin;
-        state.token_index++;
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expected a name");
-            state.error = true;
-            state.call = basic_recover;
-            state.token_index++;
-        }
-        break;
-    }
-    return state;
-}
-
-struct state scan_expect_class_begin(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    struct state n_state = state;
-    switch (token->type) {
-    case OPEN_BLOCK_TOKEN:
-        n_state.call = scan_start;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, SET(CLOSE_BLOCK_TOKEN), ALLOW_ALL);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        state.call = scan_start;
-        if (state.error) state.call = NULL;
-        else state.token_index++;
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expected \"{\"");
-            state.error = true;
-            state.call = basic_recover;
-            state.token_index++;
-        }
-        break;
-    }
-    return state;
-}
-
-struct state scan_expect_class_name(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case IDENTIFIER_TOKEN:
-        state.call = scan_expect_class_begin;
         state.token_index++;
         break;
     default:
@@ -577,21 +492,12 @@ struct state scan_expect_class_name(struct state_args args, struct state state) 
 struct state scan_expect_struct_begin(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
-    struct state n_state = state;
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
-        n_state.call = scan_start;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, SET(CLOSE_BLOCK_TOKEN),
-                                 ALLOW_VARIALBE_DECLARATION | ALLOW_SEMICOLON_EXPRESSION);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        state.call = scan_start;
-        if (state.error) state.call = NULL;
-        else state.token_index++;
+        state = substate(state, args, state.scope,
+                         scan_start, scan_start, NULL, SET(CLOSE_BLOCK_TOKEN),
+                         ALLOW_VARIALBE_DECLARATION | ALLOW_SEMICOLON_EXPRESSION);
+        if (!state.error) state.token_index++;
         break;
     default:
         if (avoid_throw(args, state)) {
@@ -636,21 +542,12 @@ struct state scan_expect_struct_name(struct state_args args, struct state state)
 struct state scan_expect_union_begin(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
-    struct state n_state = state;
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
-        n_state.call = scan_start;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, SET(CLOSE_BLOCK_TOKEN),
-                                 ALLOW_VARIALBE_DECLARATION | ALLOW_SEMICOLON_EXPRESSION);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        state.call = scan_start;
-        if (state.error) state.call = NULL;
-        else state.token_index++;
+        state = substate(state, args, state.scope,
+                         scan_start, scan_start, NULL, SET(CLOSE_BLOCK_TOKEN),
+                         ALLOW_VARIALBE_DECLARATION | ALLOW_SEMICOLON_EXPRESSION);
+        if (!state.error) state.token_index++;
         break;
     default:
         if (avoid_throw(args, state)) {
@@ -719,6 +616,7 @@ struct state scan_expect_definition(struct state_args args, struct state state) 
     switch (token->type) {
     case K_NAMESPACE_TOKEN:
         state.call = scan_expect_namespace_name;
+        state.line_no = token->line_in_file;
         state.token_index++;
         break;
     case K_STRUCT_TOKEN:
@@ -760,6 +658,7 @@ struct state scan_expect_value_or_definition(struct state_args args, struct stat
         break;
     case K_NAMESPACE_TOKEN:
         state.call = scan_expect_namespace_name;
+        state.line_no = token->line_in_file;
         state.token_index++;
         break;
     case K_STRUCT_TOKEN:
@@ -783,33 +682,17 @@ struct state scan_expect_value_or_definition(struct state_args args, struct stat
 struct state scan_found_second_for_statement(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
-    struct state n_state;
     switch (token->type) {
     case END_TOKEN:
-        n_state = state;
-        n_state.call = scan_expect_value;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, SET(OPEN_BLOCK_TOKEN),
-                                 ALLOW_VARIALBE_DECLARATION);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
+        state = substate(state, args, state.scope,
+                         scan_expect_value, scan_start, NULL,
+                         SET(OPEN_BLOCK_TOKEN), ALLOW_VARIALBE_DECLARATION);
         if (!state.error) state.call = scan_start;
         break;
     case SEPERATOR_TOKEN:
-        n_state = state;
-        n_state.call = scan_expect_value;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, SET(END_TOKEN) | SET(SEPERATOR_TOKEN),
-                                 ALLOW_VARIALBE_DECLARATION);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        if (!state.error) state.call = scan_found_second_for_statement;
+        state = substate(state, args, state.scope,
+                         scan_expect_value, scan_found_second_for_statement, NULL,
+                         SET(OPEN_BLOCK_TOKEN), ALLOW_VARIALBE_DECLARATION);
         break;
     default:
         if (avoid_throw(args, state)) {
@@ -829,33 +712,16 @@ struct state scan_found_second_for_statement(struct state_args args, struct stat
 struct state scan_found_first_for_statement(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
-    struct state n_state;
     switch (token->type) {
     case END_TOKEN:
-        n_state = state;
-        n_state.call = scan_expect_value;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, SET(END_TOKEN) | SET(SEPERATOR_TOKEN),
-                                 ALLOW_VARIALBE_DECLARATION);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        if (!state.error) state.call = scan_found_second_for_statement;
+        state = substate(state, args, state.scope,
+                         scan_expect_value, scan_found_second_for_statement, NULL,
+                        SET(END_TOKEN) | SET(SEPERATOR_TOKEN), ALLOW_VARIALBE_DECLARATION);
         break;
     case SEPERATOR_TOKEN:
-        n_state = state;
-        n_state.call = scan_expect_value;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, SET(END_TOKEN) | SET(SEPERATOR_TOKEN),
-                                 ALLOW_VARIALBE_DECLARATION);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        if (!state.error) state.call = scan_found_first_for_statement;
+        state = substate(state, args, state.scope,
+                         scan_expect_value, scan_found_first_for_statement, NULL,
+                        SET(END_TOKEN) | SET(SEPERATOR_TOKEN), ALLOW_VARIALBE_DECLARATION);
         break;
     default:
         if (avoid_throw(args, state)) {
@@ -874,7 +740,6 @@ struct state scan_found_first_for_statement(struct state_args args, struct state
 struct state scan_start(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
-    struct state n_state;
     switch (token->type) {
     case IDENTIFIER_TOKEN:
         state.positional_identifier[0] = token->identifier;
@@ -894,47 +759,23 @@ struct state scan_start(struct state_args args, struct state state) {
         break;
     case C_IF_TOKEN:
         if (!(args.allowed_states & ALLOW_CONTROL_STRUCTURES)) goto error;
-        n_state = state;
-        n_state.call = scan_expect_value;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state,
-            SET(OPEN_BLOCK_TOKEN) | SET(END_TOKEN) | SET(IDENTIFIER_TOKEN) | SET(C_IF_TOKEN) |
-            SET(C_RETURN_TOKEN) | SET(C_FOR_TOKEN) | SET(C_WHILE_TOKEN), ALLOW_NONE);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        if (!state.error) state.call = scan_start;
+        state = substate(state, args, state.scope, scan_expect_value,
+                         scan_start, NULL, SET(OPEN_BLOCK_TOKEN) | SET(END_TOKEN) |
+                         SET(IDENTIFIER_TOKEN) | SET(C_IF_TOKEN) | SET(C_RETURN_TOKEN) |
+                         SET(C_FOR_TOKEN) | SET(C_WHILE_TOKEN), ALLOW_NONE);
         break;
     case C_FOR_TOKEN:
         if (!(args.allowed_states & ALLOW_CONTROL_STRUCTURES)) goto error;
-        n_state = state;
-        n_state.call = scan_start;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, SET(END_TOKEN) | SET(SEPERATOR_TOKEN),
-                                 ALLOW_VARIALBE_DECLARATION);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        if (!state.error) state.call = scan_found_first_for_statement;
+        state = substate(state, args, state.scope, scan_start,
+                         scan_found_first_for_statement, NULL, SET(END_TOKEN) |
+                         SET(SEPERATOR_TOKEN), ALLOW_VARIALBE_DECLARATION);
         break;
     case C_WHILE_TOKEN:
         if (!(args.allowed_states & ALLOW_CONTROL_STRUCTURES)) goto error;
-        n_state = state;
-        n_state.call = scan_start;
-        n_state.token_index++;
-        init_stack(&n_state.paranthesis);
-        n_state = parse_internal(args.tokens, n_state, 
-            SET(OPEN_BLOCK_TOKEN) | SET(END_TOKEN) | SET(IDENTIFIER_TOKEN) | SET(C_IF_TOKEN) |
-            SET(C_RETURN_TOKEN) | SET(C_FOR_TOKEN) | SET(C_WHILE_TOKEN), ALLOW_NONE);
-        state.token_index = n_state.token_index;
-        state.error = n_state.error;
-        state.had_error = n_state.had_error;
-        destroy_stack(&n_state.paranthesis);
-        if (!state.error) state.call = scan_start;
+        state = substate(state, args, state.scope, scan_expect_value,
+                         scan_start, NULL, SET(OPEN_BLOCK_TOKEN) | SET(END_TOKEN) |
+                         SET(IDENTIFIER_TOKEN) | SET(C_IF_TOKEN) | SET(C_RETURN_TOKEN) |
+                         SET(C_FOR_TOKEN) | SET(C_WHILE_TOKEN), ALLOW_NONE);
         break;
     case END_TOKEN:
         state.token_index++;
