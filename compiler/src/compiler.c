@@ -539,23 +539,23 @@ void print_ast_internal(void *env, const char *name, void *val) {
         Struct struct_entry = (Struct) entry;
         printf("%sstruct %s with %d entrys:\n", indent, name, struct_entry->data.len);
         for (unsigned int i = 0; i < struct_entry->data.len; i++) {
-            print_ast_internal(&layer, NULL, &struct_entry->data.value[i]);
+            print_ast_internal(&layer, struct_entry->data.value[i].meta.name, &struct_entry->data.value[i]);
         }
         break;
     case ENTRY_UNION:;
         Struct union_entry = (Struct) entry;
         printf("%sunion %s with %d entrys:\n", indent, name, union_entry->data.len);
         for (unsigned int i = 0; i < union_entry->data.len; i++) {
-            print_ast_internal(&layer, NULL, &union_entry->data.value[i]);
+            print_ast_internal(&layer, union_entry->data.value[i].meta.name, &union_entry->data.value[i]);
         }
         break;
     case ENTRY_NAMESPACE:;
         Namespace namespace = (Namespace) entry;
         printf("%sunion %s with %d entrys:\n", indent, name, namespace->struct_data.len + namespace->scope.count);
-        layer++;
         for (unsigned int i = 0; i < namespace->struct_data.len; i++) {
             print_ast_internal(&layer, NULL, &namespace->struct_data.value[i]);
         }
+        layer++;
         string_dict_complex_foreach(&namespace->scope, print_ast_internal, &layer);
         break;
     case ENTRY_METHODS:;
@@ -642,13 +642,15 @@ void free_ast(const char *key, void *val) {
     case ENTRY_STRUCT:;
         Struct struct_entry = (Struct) entry;
         for (unsigned int i = 0; i < struct_entry->data.len; i++) {
-            free_ast(NULL, &struct_entry->data.value[i]);
+            mfree(struct_entry->data.value[i].type.unresolved);
+            mfree(struct_entry->data.value[i].meta.name);
         }
         break;
     case ENTRY_UNION:;
         Union union_entry = (Union) entry;
         for (unsigned int i = 0; i < union_entry->data.len; i++) {
-            free_ast(NULL, &union_entry->data.value[i]);
+            mfree(union_entry->data.value[i].type.unresolved);
+            mfree(union_entry->data.value[i].meta.name);
         }
         break;
     case ENTRY_METHODS:;
@@ -660,7 +662,6 @@ void free_ast(const char *key, void *val) {
             free_struct_data(method->stack_data);
             mfree(method->return_type.unresolved);
             mfree(method->name);
-            mfree(method);
         }
         break;
     case ENTRY_PACKAGE:;

@@ -17,6 +17,7 @@
 #define ALLOW_SEMICOLON_EXPRESSION  (1 << 4)
 #define ALLOW_STATEMENTS            (1 << 5)
 #define ALLOW_CONTROL_STRUCTURES    (1 << 6)
+#define ALLOW_VARIABLE_ASSIGNMENT   (1 << 7)
 
 #define SET(x) (1 << (x))
 
@@ -79,7 +80,8 @@ bool avoid_throw(struct state_args args, struct state state) {
     return !!(args.ignore_throw_mask & SET(args.tokens.tokens[state.token_index].type));
 }
 
-struct state substate(struct state state, struct state_args args, StringDict* scope,
+struct state substate(struct state state, struct state_args args,
+                      StringDict* scope, StructData* struct_data,
                       struct state (*substate_start)(struct state_args, struct state),
                       struct state (*on_exit_fine)(struct state_args, struct state),
                       struct state (*on_exit_err)(struct state_args, struct state),
@@ -90,6 +92,7 @@ struct state substate(struct state state, struct state_args args, StringDict* sc
     n_state.token_index++;
     init_stack(&n_state.paranthesis);
     n_state.scope = scope;
+    n_state.struct_data = struct_data;
     n_state = parse_internal(args.tokens, n_state, no_throw_token, allowed_states);
     state.token_index = n_state.token_index;
     state.error = n_state.error;
@@ -145,6 +148,23 @@ static struct state insert_function(struct state_args args, struct state state, 
     return state;
 }
 
+static struct state insert_field(struct state state, char* type, char* name, Token* token) {
+    state.struct_data->len++;
+    state.struct_data->value = mrealloc(state.struct_data->value, state.struct_data->len * sizeof(state.struct_data->value[0]));
+    state.struct_data->value[state.struct_data->len - 1] = (struct Field) {
+        .meta = {
+            .entry_type = ENTRY_FIELD,
+            .line = token->line_in_file,
+            .name = strmcpy(name)
+        },
+        .type = {
+            .unresolved = strmcpy(type),
+            .resolved = NULL
+        }
+    };
+    return state;
+}
+
 struct state scan_expect_operator(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
@@ -180,7 +200,7 @@ struct state scan_expect_operator(struct state_args args, struct state state) {
         state.call = scan_expect_value;
         break;
     case OPEN_INDEX_TOKEN:
-        state = substate(state, args, state.scope,
+        state = substate(state, args, state.scope, state.struct_data,
                          scan_expect_value, scan_expect_operator,
                          NULL, SET(CLOSE_INDEX_TOKEN), ALLOW_NONE);
         if (!state.error) state.token_index++;
@@ -203,7 +223,7 @@ struct state scan_expect_operator(struct state_args args, struct state state) {
 struct state scan_found_function_argument(struct state_args args, struct state state);
 
 struct state get_function_arg(struct state_args args, struct state state) {
-    return substate(state, args, state.scope, scan_expect_value,
+    return substate(state, args, state.scope, state.struct_data, scan_expect_value,
                     scan_found_function_argument, NULL, SET(SEPERATOR_TOKEN) |
                     SET(CLOSE_PARANTHESIS_TOKEN), ALLOW_NONE);
 }
@@ -282,7 +302,8 @@ struct state found_function_argument_definition(struct state_args args, struct s
     if (debug_run) debug_log_throw(token, "%s", __func__);
     switch (token->type) {
     case SEPERATOR_TOKEN:
-        state = substate(state, args, state.scope, scan_start, found_function_argument_definition,
+        state = substate(state, args, state.scope, state.struct_data,
+                         scan_start, found_function_argument_definition,
                          NULL, SET(SEPERATOR_TOKEN) | SET(CLOSE_PARANTHESIS_TOKEN),
                          ALLOW_SEMICOLON_EXPRESSION | ALLOW_VARIALBE_DECLARATION);
         break;
@@ -309,15 +330,29 @@ struct state scan_found_second_identifier(struct state_args args, struct state s
     if (debug_run) debug_log_throw(token, "%s", __func__);
     switch (token->type) {
     case ASSIGN_TOKEN:
+        if (!(args.allowed_states & ALLOW_VARIABLE_ASSIGNMENT)) {
+            if (avoid_throw(args, state)) {
+                state.call = NULL;
+            }
+            else {
+                throw(token, "an assigment is not allowed here");
+                state.call = basic_recover;
+                state.error = NULL;
+            }
+            break;
+        }
+        state = insert_field(state, state.positional_identifier[0], state.positional_identifier[1], token);
         state.call = scan_expect_value;
         state.token_index++;
         break;
     case END_TOKEN:
+        state = insert_field(state, state.positional_identifier[0], state.positional_identifier[1], token);
         state.call = scan_start;
         state.token_index++;
         break;
     case OPEN_PARANTHESIS_TOKEN:
-        state = substate(state, args, state.scope, scan_start, found_function_argument_definition,
+        state = substate(state, args, state.scope, state.struct_data,
+                         scan_start, found_function_argument_definition,
                          NULL, SET(SEPERATOR_TOKEN) | SET(CLOSE_PARANTHESIS_TOKEN),
                          ALLOW_SEMICOLON_EXPRESSION | ALLOW_VARIALBE_DECLARATION);
         break;
@@ -355,7 +390,7 @@ struct state found_scalar_initialisation_expression(struct state_args args, stru
     if (debug_run) debug_log_throw(token, "%s", __func__);
     switch (token->type) {
     case SEPERATOR_TOKEN:
-        state = substate(state, args, state.scope, scan_start,
+        state = substate(state, args, state.scope, state.struct_data, scan_start,
                          found_scalar_initialisation_expression, NULL,
                          SET(SEPERATOR_TOKEN) | SET(CLOSE_BLOCK_TOKEN),
                          ALLOW_SEMICOLON_EXPRESSION);
@@ -405,7 +440,7 @@ struct state scan_expect_value(struct state_args args, struct state state) {
         state.call = scan_expect_operator_allow_call;
         break;
     case OPEN_BLOCK_TOKEN:
-        state = substate(state, args, state.scope, scan_start,
+        state = substate(state, args, state.scope, state.struct_data, scan_start,
                          found_scalar_initialisation_expression, NULL,
                          SET(SEPERATOR_TOKEN) | SET(CLOSE_BLOCK_TOKEN),
                          ALLOW_SEMICOLON_EXPRESSION);
@@ -447,7 +482,7 @@ struct state scan_expect_namespace_begin(struct state_args args, struct state st
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
         Namespace nscope = make_namespace(state.positional_identifier[0], token);
-        state = substate(state, args, &nscope->scope, scan_start,
+        state = substate(state, args, &nscope->scope, &nscope->struct_data, scan_start,
                          scan_start, NULL, SET(CLOSE_BLOCK_TOKEN), ALLOW_ALL);
         string_dict_put(state.scope, nscope->meta.name, nscope);
         if (!state.error) state.token_index++;
@@ -505,9 +540,9 @@ struct state scan_expect_struct_begin(struct state_args args, struct state state
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
         Struct nscope = make_struct(state.positional_identifier[0], token);
-        state = substate(state, args, NULL,
+        state = substate(state, args, NULL, &nscope->data,
                          scan_start, scan_start, NULL, SET(CLOSE_BLOCK_TOKEN),
-                         ALLOW_VARIALBE_DECLARATION | ALLOW_SEMICOLON_EXPRESSION);
+                         ALLOW_VARIALBE_DECLARATION | ALLOW_SEMICOLON_EXPRESSION | ALLOW_VARIABLE_ASSIGNMENT);
         string_dict_put(state.scope, nscope->meta.name, nscope);
         if (!state.error) state.token_index++;
         break;
@@ -564,9 +599,9 @@ struct state scan_expect_union_begin(struct state_args args, struct state state)
     switch (token->type) {
     case OPEN_BLOCK_TOKEN:
         Union nscope = make_union(state.positional_identifier[0], token);
-        state = substate(state, args, NULL,
+        state = substate(state, args, NULL, &nscope->data,
                          scan_start, scan_start, NULL, SET(CLOSE_BLOCK_TOKEN),
-                         ALLOW_VARIALBE_DECLARATION | ALLOW_SEMICOLON_EXPRESSION);
+                         ALLOW_VARIALBE_DECLARATION);
         string_dict_put(state.scope, nscope->meta.name, nscope);
         if (!state.error) state.token_index++;
         break;
@@ -706,13 +741,13 @@ struct state scan_found_second_for_statement(struct state_args args, struct stat
     if (debug_run) debug_log_throw(token, "%s", __func__);
     switch (token->type) {
     case END_TOKEN:
-        state = substate(state, args, state.scope,
+        state = substate(state, args, state.scope, state.struct_data,
                          scan_expect_value, scan_start, NULL,
                          SET(OPEN_BLOCK_TOKEN), ALLOW_VARIALBE_DECLARATION);
         if (!state.error) state.call = scan_start;
         break;
     case SEPERATOR_TOKEN:
-        state = substate(state, args, state.scope,
+        state = substate(state, args, state.scope, state.struct_data,
                          scan_expect_value, scan_found_second_for_statement, NULL,
                          SET(OPEN_BLOCK_TOKEN), ALLOW_VARIALBE_DECLARATION);
         break;
@@ -736,12 +771,12 @@ struct state scan_found_first_for_statement(struct state_args args, struct state
     if (debug_run) debug_log_throw(token, "%s", __func__);
     switch (token->type) {
     case END_TOKEN:
-        state = substate(state, args, state.scope,
+        state = substate(state, args, state.scope, state.struct_data,
                          scan_expect_value, scan_found_second_for_statement, NULL,
                         SET(END_TOKEN) | SET(SEPERATOR_TOKEN), ALLOW_VARIALBE_DECLARATION);
         break;
     case SEPERATOR_TOKEN:
-        state = substate(state, args, state.scope,
+        state = substate(state, args, state.scope, state.struct_data,
                          scan_expect_value, scan_found_first_for_statement, NULL,
                         SET(END_TOKEN) | SET(SEPERATOR_TOKEN), ALLOW_VARIALBE_DECLARATION);
         break;
@@ -781,20 +816,20 @@ struct state scan_start(struct state_args args, struct state state) {
         break;
     case C_IF_TOKEN:
         if (!(args.allowed_states & ALLOW_CONTROL_STRUCTURES)) goto error;
-        state = substate(state, args, state.scope, scan_expect_value,
+        state = substate(state, args, state.scope, state.struct_data, scan_expect_value,
                          scan_start, NULL, SET(OPEN_BLOCK_TOKEN) | SET(END_TOKEN) |
                          SET(IDENTIFIER_TOKEN) | SET(C_IF_TOKEN) | SET(C_RETURN_TOKEN) |
                          SET(C_FOR_TOKEN) | SET(C_WHILE_TOKEN), ALLOW_NONE);
         break;
     case C_FOR_TOKEN:
         if (!(args.allowed_states & ALLOW_CONTROL_STRUCTURES)) goto error;
-        state = substate(state, args, state.scope, scan_start,
+        state = substate(state, args, state.scope, state.struct_data, scan_start,
                          scan_found_first_for_statement, NULL, SET(END_TOKEN) |
                          SET(SEPERATOR_TOKEN), ALLOW_VARIALBE_DECLARATION);
         break;
     case C_WHILE_TOKEN:
         if (!(args.allowed_states & ALLOW_CONTROL_STRUCTURES)) goto error;
-        state = substate(state, args, state.scope, scan_expect_value,
+        state = substate(state, args, state.scope, state.struct_data, scan_expect_value,
                          scan_start, NULL, SET(OPEN_BLOCK_TOKEN) | SET(END_TOKEN) |
                          SET(IDENTIFIER_TOKEN) | SET(C_IF_TOKEN) | SET(C_RETURN_TOKEN) |
                          SET(C_FOR_TOKEN) | SET(C_WHILE_TOKEN), ALLOW_NONE);

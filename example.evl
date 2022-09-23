@@ -1,7 +1,7 @@
 namespace n {
     union u {
-        Field field1 = 1;
-        Field field2 = 2;
+        Field field1;
+        Field field2;
     }
 
     struct s {
