@@ -1,27 +1,11 @@
-String str = "hello world";
-
-public void main() {
-    print("arguments were provided:");
-    for int i = 1; i < argc; i++ {
-        print(argv[i]);
+namespace n {
+    union u {
+        Field field1 = 1;
+        Field field2 = 2;
     }
-    print("no arguments were given");
-}
 
-union u {
-    Field field1 = 1;
-    Field field2 = 2;
-}
-
-struct s {
-    Field field1 = 1;
-    Field field2 = 2;
-}
-
-while (1) {
-    if (1) {
-        print("1");
+    struct s {
+        Field field1 = 1;
+        Field field2 = 2;
     }
 }
-
-main();

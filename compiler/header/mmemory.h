@@ -2,11 +2,11 @@
 #define INCLUDE_MMEMORY_H
 #include<stdlib.h>
 
-void* mmalloc(ssize_t size);
-void* mcalloc(ssize_t size);
-void* mrealloc(void* memblock, ssize_t size);
 char* strmcpy(const char* src);
 
-void mfree(void* memblock);
+void* mmalloc(ssize_t size);
+void* mcalloc(ssize_t size);
+void* mrealloc(void* memptr, ssize_t size);
+void mfree(void* memptr);
 
 #endif

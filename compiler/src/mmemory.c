@@ -9,8 +9,8 @@ void* mcalloc(ssize_t size) {
     return calloc(size, 1);
 }
 
-void* mrealloc(void* memblock, ssize_t size) {
-    return realloc(memblock, size);
+void* mrealloc(void* memptr, ssize_t size) {
+    return realloc(memptr, size);
 }
 
 char* strmcpy(const char* src) {
@@ -19,6 +19,6 @@ char* strmcpy(const char* src) {
     return new_str;
 }
 
-void mfree(void* memblock) {
-    free(memblock);
+void mfree(void* memptr) {
+    free(memptr);
 }

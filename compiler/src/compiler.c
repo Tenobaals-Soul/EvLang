@@ -12,7 +12,7 @@
 
 bool debug_run = false;
 
-static char enviroment[256] = "unspecified enviroment";
+static char enviroment[256] = "<unspecified enviroment>";
 
 void set_enviroment(const char *new_enviroment) {
     if (strlen(new_enviroment) > 255) {
@@ -539,24 +539,24 @@ void print_ast_internal(void *env, const char *name, void *val) {
         Struct struct_entry = (Struct) entry;
         printf("%sstruct %s with %d entrys:\n", indent, name, struct_entry->data.len);
         for (unsigned int i = 0; i < struct_entry->data.len; i++) {
-            print_ast_internal(env, NULL, &struct_entry->data.value[i]);
+            print_ast_internal(&layer, NULL, &struct_entry->data.value[i]);
         }
         break;
     case ENTRY_UNION:;
         Struct union_entry = (Struct) entry;
         printf("%sunion %s with %d entrys:\n", indent, name, union_entry->data.len);
         for (unsigned int i = 0; i < union_entry->data.len; i++) {
-            print_ast_internal(env, NULL, &union_entry->data.value[i]);
+            print_ast_internal(&layer, NULL, &union_entry->data.value[i]);
         }
         break;
     case ENTRY_NAMESPACE:;
         Namespace namespace = (Namespace) entry;
-        printf("%sunion %s with %d entrys:\n", indent, name, namespace->struct_data.len);
-        for (unsigned int i = 0; i < namespace->struct_data.len; i++) {
-            print_ast_internal(env, NULL, &namespace->struct_data.value[i]);
-        }
+        printf("%sunion %s with %d entrys:\n", indent, name, namespace->struct_data.len + namespace->scope.count);
         layer++;
-        string_dict_complex_foreach(&namespace->scope, print_ast_internal, env);
+        for (unsigned int i = 0; i < namespace->struct_data.len; i++) {
+            print_ast_internal(&layer, NULL, &namespace->struct_data.value[i]);
+        }
+        string_dict_complex_foreach(&namespace->scope, print_ast_internal, &layer);
         break;
     case ENTRY_METHODS:;
         MethodTable table = (MethodTable) entry;
