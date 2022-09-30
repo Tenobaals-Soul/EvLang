@@ -1,0 +1,17 @@
+struct List<T> {
+    T[] data;
+    unsigned int length;
+}
+
+List<T> List(Type T) = {T[256], 0};
+
+List<T> (List<T> list).add<T>(T value) {
+    if (list.length >= list.data.length) {
+        list.data = list.data.realloc(list.data.length + 256);
+    }
+    list.data[list.length] = value;
+    return list;
+}
+
+List<int> l = List();
+l.add(5)
