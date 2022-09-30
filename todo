@@ -20,6 +20,15 @@
     - [ ] convert to tree
         - [ ] statements
         - [ ] full structure
+    - [ ] advanced types
+        - [ ] arrays
+            - [ ] array declaration
+            - [ ] array constructure
+        - [ ] generics
+            - [ ] structs and unions
+            - [ ] functions
+            - [ ] calls
+        - [ ] iterator syntax
 - [ ] scope checking
     - [ ] accessability checks
 - [ ] bytecode
@@ -27,6 +36,7 @@
 
 ## usefull
 - [x] format error messages
+- [ ] correct error messages
 - [ ] basic error recovery
 - [ ] advanced error recovery
 - [ ] command line arguments and flags

@@ -117,7 +117,8 @@ struct state basic_recover(struct state_args args, struct state state) {
     if (debug_run) debug_log_throw(&args.tokens.tokens[state.token_index], "%s", __func__);
     state.error = true;
     if (args.tokens.tokens[state.token_index].type == END_TOKEN ||
-        args.tokens.tokens[state.token_index].type == CLOSE_BLOCK_TOKEN) {
+        args.tokens.tokens[state.token_index].type == CLOSE_BLOCK_TOKEN ||
+        args.tokens.tokens[state.token_index].type == OPEN_BLOCK_TOKEN) {
         state.call = NULL;
     }
     else {

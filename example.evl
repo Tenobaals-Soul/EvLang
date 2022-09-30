@@ -1,17 +1,19 @@
 struct List<T> {
     T[] data;
-    unsigned int length;
+    uint length;
 }
 
-List<T> List(Type T) = {T[256], 0};
+List<T> List<T>() = {T[256], 0};
 
-List<T> (List<T> list).add<T>(T value) {
+List<T> (List<T> list).add(T value) {
     if (list.length >= list.data.length) {
-        list.data = list.data.realloc(list.data.length + 256);
+        T[] new_data = T[list.data.length + 256];
+        new_data[0..list.data.length] = list.data[0..list.data.length];
+        list.data = new_data;
     }
-    list.data[list.length] = value;
+    list.data[list.length++] = value;
     return list;
 }
 
-List<int> l = List();
+List<int> l = List<int>();
 l.add(5)
