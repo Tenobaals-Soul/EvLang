@@ -24,24 +24,24 @@ static inline void mrealloc_on_full(Stack* stack, int push_s) {
     stack->bsize += sizeof(type);\
 }
 
-void push_chr(Stack* stack, char val) implement_push(char)
-void push_sht(Stack* stack, short val) implement_push(short)
-void push_int(Stack* stack, int val) implement_push(int)
-void push_lng(Stack* stack, long val) implement_push(long)
-void push_llg(Stack* stack, long long val) implement_push(long long)
-void push_ptr(Stack* stack, void* val) implement_push(void*)
+void pushchr(Stack* stack, char val) implement_push(char)
+void pushsht(Stack* stack, short val) implement_push(short)
+void pushint(Stack* stack, int val) implement_push(int)
+void pushlng(Stack* stack, long val) implement_push(long)
+void pushllg(Stack* stack, long long val) implement_push(long long)
+void pushptr(Stack* stack, void* val) implement_push(void*)
 
 #define implement_peek(type) {\
     if (stack->bsize < sizeof(type)) return (type) 0;\
     return ((type*) stack->bdata)[ceil_div(stack->bsize, sizeof(type)) - 1];\
 }
 
-char peek_chr(Stack* stack) implement_peek(char)
-short peek_sht(Stack* stack) implement_peek(short)
-int peek_int(Stack* stack) implement_peek(int)
-long peek_lng(Stack* stack) implement_peek(long)
-long long peek_llg(Stack* stack) implement_peek(long long)
-void* peek_ptr(Stack* stack) implement_peek(void*)
+char peekchr(Stack* stack) implement_peek(char)
+short peeksht(Stack* stack) implement_peek(short)
+int peekint(Stack* stack) implement_peek(int)
+long peeklng(Stack* stack) implement_peek(long)
+long long peekllg(Stack* stack) implement_peek(long long)
+void* peekptr(Stack* stack) implement_peek(void*)
 
 #define implement_pop(type) {\
     if (stack->bsize < sizeof(type)) return (type) 0;\
@@ -50,12 +50,12 @@ void* peek_ptr(Stack* stack) implement_peek(void*)
     return ((type*) stack->bdata)[ceil_div(stack->bsize, sizeof(type))];\
 }
 
-char pop_chr(Stack* stack) implement_pop(char)
-short pop_sht(Stack* stack) implement_pop(short)
-int pop_int(Stack* stack) implement_pop(int)
-long pop_lng(Stack* stack) implement_pop(long)
-long long pop_llg(Stack* stack) implement_pop(long long)
-void* pop_ptr(Stack* stack) implement_pop(void*)
+char popchr(Stack* stack) implement_pop(char)
+short popsht(Stack* stack) implement_pop(short)
+int popint(Stack* stack) implement_pop(int)
+long poplng(Stack* stack) implement_pop(long)
+long long popllg(Stack* stack) implement_pop(long long)
+void* popptr(Stack* stack) implement_pop(void*)
 
 void destroy_stack(Stack* stack) {
     stack->bsize = 0;
@@ -64,7 +64,7 @@ void destroy_stack(Stack* stack) {
     stack->bdata = NULL;
 }
 
-void* stack_disown(Stack* stack) {
+void* stack_adopt_array(Stack* stack) {
     void* to_ret = stack->bdata;
     to_ret = mrealloc(to_ret, stack->bsize);
     stack->bsize = 0;

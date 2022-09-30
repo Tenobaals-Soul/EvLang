@@ -11,28 +11,28 @@ typedef struct Stack {
 
 void init_stack(Stack* stack);
 
-void push_chr(Stack* stack, char val);
-void push_sht(Stack* stack, short val);
-void push_int(Stack* stack, int val);
-void push_lng(Stack* stack, long val);
-void push_llg(Stack* stack, long long val);
-void push_ptr(Stack* stack, void* ptr);
+void pushchr(Stack* stack, char val);
+void pushsht(Stack* stack, short val);
+void pushint(Stack* stack, int val);
+void pushlng(Stack* stack, long val);
+void pushllg(Stack* stack, long long val);
+void pushptr(Stack* stack, void* ptr);
 
-char peek_chr(Stack* stack);
-short peek_sht(Stack* stack);
-int peek_int(Stack* stack);
-long peek_lng(Stack* stack);
-long long peek_llg(Stack* stack);
-void* peek_ptr(Stack* stack);
+char peekchr(Stack* stack);
+short peeksht(Stack* stack);
+int peekint(Stack* stack);
+long peeklng(Stack* stack);
+long long peekllg(Stack* stack);
+void* peekptr(Stack* stack);
 
-char pop_chr(Stack* stack);
-short pop_sht(Stack* stack);
-int pop_int(Stack* stack);
-long pop_lng(Stack* stack);
-long long pop_llg(Stack* stack);
-void* pop_ptr(Stack* stack);
+char popchr(Stack* stack);
+short popsht(Stack* stack);
+int popint(Stack* stack);
+long poplng(Stack* stack);
+long long popllg(Stack* stack);
+void* popptr(Stack* stack);
 
 void destroy_stack(Stack* stack);
-void* stack_disown(Stack* stack);
+void* stack_adopt_array(Stack* stack);
 
 #endif

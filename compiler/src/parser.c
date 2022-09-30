@@ -8,6 +8,7 @@
 #include<string.h>
 #include<stdarg.h>
 #include<stack.h>
+#include<limits.h>
 
 #define ALLOW_NONE                  (0)
 #define ALLOW_ALL                   (~0)
@@ -49,6 +50,8 @@ struct state {
     StructData* struct_data;
     unsigned int token_index;
     Stack paranthesis;
+    Stack operators;
+    Stack values;
     char* positional_identifier[4];
     unsigned int line_no;
     union {
@@ -165,6 +168,58 @@ static struct state insert_field(struct state state, char* type, char* name, Tok
     return state;
 }
 
+int get_operator_priority(Token* token) {
+    if (token->type == OPERATOR_TOKEN) {
+        switch (token->operator_type) {
+        case BINARY_AND_OPERATOR:
+        case BINARY_OR_OPERATOR:
+        case BINARY_XOR_OPERATOR:
+            return 1;
+        case MULTIPLY_OPERATOR:
+        case DIVIDE_OPERATOR:
+        case LEFT_SHIFT_OPERATOR:
+        case RIGHT_SHIFT_OPERATOR:
+            return 2;
+        case ADD_OPERATOR:
+        case SUBTRACT_OPERATOR:
+            return 3;
+        case EQUALS_OPERATOR:
+        case SMALLER_THAN_OPERATOR:
+        case GREATER_THAN_OPERATOR:
+        case SMALLER_EQUAL_OPERATOR:
+        case GREATER_EQUAL_OPERATOR:
+        case NOT_EQUAL_OPERATOR:
+            return 4;
+        case BOOL_AND_OPERATOR:
+        case BOOL_OR_OPERATOR:
+            return 5;
+        case INPLACE_ADD_OPERATOR:
+        case INPLACE_AND_OPERATOR:
+        case INPLACE_DIVIDE_OPERATOR:
+        case INPLACE_LSHIFT_OPERATOR:
+        case INPLACE_MULTIPLY_OPERATOR:
+        case INPLACE_OR_OPERATOR:
+        case INPLACE_POW_OPERATOR:
+        case INPLACE_RSHIFT_OPERAOR:
+        case INPLACE_SUBTRACT_OPERATOR:
+            return INT_MAX;
+        case BINARY_NOT_OPERATOR:
+        case INCREMENT_OPERATOR:
+        case DECREMENT_OPERATOR:
+        case BOOL_NOT_OPERATOR:
+            return -1;
+        }
+        return -1;
+    }
+    else if (token->type == DOT_TOKEN) {
+        return 0;
+    }
+    else if (token->type == ASSIGN_TOKEN) {
+        return INT_MAX;
+    }
+    else return -1;
+}
+
 struct state scan_expect_operator(struct state_args args, struct state state) {
     Token* token = &args.tokens.tokens[state.token_index];
     if (debug_run) debug_log_throw(token, "%s", __func__);
@@ -176,8 +231,8 @@ struct state scan_expect_operator(struct state_args args, struct state state) {
             : scan_expect_value;
         break;
     case CLOSE_PARANTHESIS_TOKEN:
-        if (peek_chr(&state.paranthesis) == '(') {
-            pop_chr(&state.paranthesis);
+        if (peekchr(&state.paranthesis) == '(') {
+            popchr(&state.paranthesis);
             state.token_index++;
         }
         else goto error;
@@ -273,7 +328,7 @@ struct state scan_found_function_declaration(struct state_args args, struct stat
     case OPEN_BLOCK_TOKEN:
         state.token_index++;
         state.call = scan_start;
-        push_chr(&state.paranthesis, '{');
+        pushchr(&state.paranthesis, '{');
         break;
     case ASSIGN_TOKEN:
         state.token_index++;
@@ -433,7 +488,7 @@ struct state scan_expect_value(struct state_args args, struct state state) {
         break;
     case OPEN_PARANTHESIS_TOKEN:
         state.token_index++;
-        push_chr(&state.paranthesis, '(');
+        pushchr(&state.paranthesis, '(');
         break;
     case IDENTIFIER_TOKEN:
         state.token_index++;
@@ -804,12 +859,12 @@ struct state scan_start(struct state_args args, struct state state) {
         state.call = scan_found_first_identifier;
         break;
     case OPEN_BLOCK_TOKEN:
-        push_chr(&state.paranthesis, '{');
+        pushchr(&state.paranthesis, '{');
         state.token_index++;
         break;
     case CLOSE_BLOCK_TOKEN:
-        if (peek_chr(&state.paranthesis) == '{') {
-            pop_chr(&state.paranthesis);
+        if (peekchr(&state.paranthesis) == '{') {
+            popchr(&state.paranthesis);
             state.token_index++;
         }
         else goto error;
