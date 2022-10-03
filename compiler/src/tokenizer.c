@@ -6,8 +6,8 @@
 #include<memory.h>
 
 unsigned long advance(TokenList * list, unsigned long capacity) {
-    list->cursor++;
-    if (list->cursor >= capacity) {
+    list->length++;
+    if (list->length >= capacity) {
         capacity += 128;
         list->tokens = mrealloc(list->tokens, sizeof(Token) * capacity);
     }
@@ -44,23 +44,23 @@ char* read_next_identifier(current_read_data* cr, const char* src, unsigned long
 
 int t_get_bool(char* identifier, unsigned long len, current_read_data* cr, TokenList* list, const char** src) {
     if (strcmp(identifier, "true") == 0) {
-        list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
-        list->tokens[list->cursor].line_in_file = cr->current_line;
-        list->tokens[list->cursor].line_content = cr->line_begin;
-        list->tokens[list->cursor].text_len = len;
-        list->tokens[list->cursor].type = FIXED_VALUE_TOKEN;
-        list->tokens[list->cursor].fixed_value.type = BOOLEAN;
-        list->tokens[list->cursor].fixed_value.value.boolean = true;
+        list->tokens[list->length].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
+        list->tokens[list->length].line_in_file = cr->current_line;
+        list->tokens[list->length].line_content = cr->line_begin;
+        list->tokens[list->length].text_len = len;
+        list->tokens[list->length].type = FIXED_VALUE_TOKEN;
+        list->tokens[list->length].fixed_value.type = BOOLEAN;
+        list->tokens[list->length].fixed_value.value.boolean = true;
         return 1;
     }
     else if (strcmp(identifier, "false") == 0) {
-        list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
-        list->tokens[list->cursor].line_in_file = cr->current_line;
-        list->tokens[list->cursor].line_content = cr->line_begin;
-        list->tokens[list->cursor].text_len = len;
-        list->tokens[list->cursor].type = FIXED_VALUE_TOKEN;
-        list->tokens[list->cursor].fixed_value.type = BOOLEAN;
-        list->tokens[list->cursor].fixed_value.value.boolean = false;
+        list->tokens[list->length].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
+        list->tokens[list->length].line_in_file = cr->current_line;
+        list->tokens[list->length].line_content = cr->line_begin;
+        list->tokens[list->length].text_len = len;
+        list->tokens[list->length].type = FIXED_VALUE_TOKEN;
+        list->tokens[list->length].fixed_value.type = BOOLEAN;
+        list->tokens[list->length].fixed_value.value.boolean = false;
         return 1;
     }
     return 0;
@@ -68,27 +68,27 @@ int t_get_bool(char* identifier, unsigned long len, current_read_data* cr, Token
 
 void t_get_keyword_or_identifier(char* identifier, unsigned long len, current_read_data* cr, StringDict* keyword_dict, TokenList* list, const char** src) {
     void* val = string_dict_get(keyword_dict, identifier);
-    list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
-    list->tokens[list->cursor].line_in_file = cr->current_line;
-    list->tokens[list->cursor].line_content = cr->line_begin;
-    list->tokens[list->cursor].text_len = len;
+    list->tokens[list->length].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
+    list->tokens[list->length].line_in_file = cr->current_line;
+    list->tokens[list->length].line_content = cr->line_begin;
+    list->tokens[list->length].text_len = len;
     if (val) {
-        list->tokens[list->cursor].type = (TokenType) val;
+        list->tokens[list->length].type = (TokenType) val;
         mfree(identifier);
     }
     else {
-        list->tokens[list->cursor].type = IDENTIFIER_TOKEN;
-        list->tokens[list->cursor].identifier = identifier;
+        list->tokens[list->length].type = IDENTIFIER_TOKEN;
+        list->tokens[list->length].identifier = identifier;
     }
 }
 
 int try_extract_end(current_read_data* cr, const char** src, TokenList* list) {
     if (**src == ';') {
-        list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
-        list->tokens[list->cursor].line_in_file = cr->current_line;
-        list->tokens[list->cursor].line_content = cr->line_begin;
-        list->tokens[list->cursor].text_len = 1;
-        list->tokens[list->cursor].type = END_TOKEN;
+        list->tokens[list->length].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
+        list->tokens[list->length].line_in_file = cr->current_line;
+        list->tokens[list->length].line_content = cr->line_begin;
+        list->tokens[list->length].text_len = 1;
+        list->tokens[list->length].type = END_TOKEN;
         ++*src;
         return 1;
     }
@@ -228,18 +228,18 @@ static int t_get_number(current_read_data* cr, const char** src, TokenList* list
     enum parse_number_res res = parse_number(cr, src, &floating_value_found, &integer_value_found);
     if (res != NO_NUMBER) {
         unsigned long len = ((ulong) *src) - ((ulong) before);
-        list->tokens[list->cursor].char_in_line = char_in_line_before;
-        list->tokens[list->cursor].line_in_file = cr->current_line;
-        list->tokens[list->cursor].line_content = cr->line_begin;
-        list->tokens[list->cursor].text_len = len;
-        list->tokens[list->cursor].type = FIXED_VALUE_TOKEN;
+        list->tokens[list->length].char_in_line = char_in_line_before;
+        list->tokens[list->length].line_in_file = cr->current_line;
+        list->tokens[list->length].line_content = cr->line_begin;
+        list->tokens[list->length].text_len = len;
+        list->tokens[list->length].type = FIXED_VALUE_TOKEN;
         if (res == FLOATING_NUMBER) {
-            list->tokens[list->cursor].fixed_value.type = FLOATING;
-            list->tokens[list->cursor].fixed_value.value.floating = floating_value_found;
+            list->tokens[list->length].fixed_value.type = FLOATING;
+            list->tokens[list->length].fixed_value.value.floating = floating_value_found;
         }
         else {
-            list->tokens[list->cursor].fixed_value.type = INTEGER;
-            list->tokens[list->cursor].fixed_value.value.integer = integer_value_found;
+            list->tokens[list->length].fixed_value.type = INTEGER;
+            list->tokens[list->length].fixed_value.value.integer = integer_value_found;
         }
         return 1;
     }
@@ -261,13 +261,13 @@ static int t_get_str(current_read_data * cr, const char ** src, TokenList * list
         memcpy(str, *src, len);
         str[len] = 0;
         *src += len + 1;
-        list->tokens[list->cursor].char_in_line = (src_begin - (unsigned long) cr->line_begin);
-        list->tokens[list->cursor].line_in_file = cr->current_line;
-        list->tokens[list->cursor].line_content = cr->line_begin;
-        list->tokens[list->cursor].text_len = len + 2;
-        list->tokens[list->cursor].type = FIXED_VALUE_TOKEN;
-        list->tokens[list->cursor].fixed_value.type = STRING;
-        list->tokens[list->cursor].fixed_value.value.string = str;
+        list->tokens[list->length].char_in_line = (src_begin - (unsigned long) cr->line_begin);
+        list->tokens[list->length].line_in_file = cr->current_line;
+        list->tokens[list->length].line_content = cr->line_begin;
+        list->tokens[list->length].text_len = len + 2;
+        list->tokens[list->length].type = FIXED_VALUE_TOKEN;
+        list->tokens[list->length].fixed_value.type = STRING;
+        list->tokens[list->length].fixed_value.value.string = str;
         return 1;
     }
     return 0;
@@ -285,13 +285,13 @@ static int t_get_char(current_read_data * cr, const char ** src, TokenList * lis
         memcpy(str, *src, len);
         str[len] = 0;
         *src += len + 1;
-        list->tokens[list->cursor].char_in_line = (src_begin - (unsigned long) cr->line_begin);
-        list->tokens[list->cursor].line_in_file = cr->current_line;
-        list->tokens[list->cursor].line_content = cr->line_begin;
-        list->tokens[list->cursor].text_len = len + 2;
-        list->tokens[list->cursor].type = FIXED_VALUE_TOKEN;
-        list->tokens[list->cursor].fixed_value.type = CHARACTER;
-        list->tokens[list->cursor].fixed_value.value.string = str;
+        list->tokens[list->length].char_in_line = (src_begin - (unsigned long) cr->line_begin);
+        list->tokens[list->length].line_in_file = cr->current_line;
+        list->tokens[list->length].line_content = cr->line_begin;
+        list->tokens[list->length].text_len = len + 2;
+        list->tokens[list->length].type = FIXED_VALUE_TOKEN;
+        list->tokens[list->length].fixed_value.type = CHARACTER;
+        list->tokens[list->length].fixed_value.value.string = str;
         return 1;
     }
     return 0;
@@ -315,13 +315,13 @@ static int starts_with(const char* src, const char* search) {
 static int make_operator(current_read_data* cr, const char** src, TokenList* list,
                          BasicOperator op_type, const char* cmp) {
     if (starts_with(*src, cmp)) {
-        list->tokens[list->cursor].type = OPERATOR_TOKEN;
-        list->tokens[list->cursor].operator_type = op_type;
-        list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
-        list->tokens[list->cursor].line_in_file = cr->current_line;
-        list->tokens[list->cursor].line_content = cr->line_begin;
+        list->tokens[list->length].type = OPERATOR_TOKEN;
+        list->tokens[list->length].operator_type = op_type;
+        list->tokens[list->length].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
+        list->tokens[list->length].line_in_file = cr->current_line;
+        list->tokens[list->length].line_content = cr->line_begin;
         int len = strlen(cmp);
-        list->tokens[list->cursor].text_len = len;
+        list->tokens[list->length].text_len = len;
         *src += len;
         return 1;
     }
@@ -370,11 +370,11 @@ static int try_extract_operator(current_read_data* cr, const char** src, TokenLi
 
 static int try_extract_assign(current_read_data* cr, const char** src, TokenList* list) {
     if (**src == '=') {
-        list->tokens[list->cursor].type = ASSIGN_TOKEN;
-        list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
-        list->tokens[list->cursor].line_in_file = cr->current_line;
-        list->tokens[list->cursor].line_content = cr->line_begin;
-        list->tokens[list->cursor].text_len = 1;
+        list->tokens[list->length].type = ASSIGN_TOKEN;
+        list->tokens[list->length].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
+        list->tokens[list->length].line_in_file = cr->current_line;
+        list->tokens[list->length].line_content = cr->line_begin;
+        list->tokens[list->length].text_len = 1;
         *src += 1;
         return 1;
     }
@@ -384,41 +384,41 @@ static int try_extract_assign(current_read_data* cr, const char** src, TokenList
 static int try_extract_any_paranthesis(current_read_data* cr, const char** src, TokenList* list) {
     switch (**src) {
     case '(':
-        list->tokens[list->cursor].type = OPEN_PARANTHESIS_TOKEN;
+        list->tokens[list->length].type = OPEN_PARANTHESIS_TOKEN;
         break;
     case ')':
-        list->tokens[list->cursor].type = CLOSE_PARANTHESIS_TOKEN;
+        list->tokens[list->length].type = CLOSE_PARANTHESIS_TOKEN;
         break;
     case '{':
-        list->tokens[list->cursor].type = OPEN_BLOCK_TOKEN;
+        list->tokens[list->length].type = OPEN_BLOCK_TOKEN;
         break;
     case '}':
-        list->tokens[list->cursor].type = CLOSE_BLOCK_TOKEN;
+        list->tokens[list->length].type = CLOSE_BLOCK_TOKEN;
         break;
     case '[':
-        list->tokens[list->cursor].type = OPEN_INDEX_TOKEN;
+        list->tokens[list->length].type = OPEN_INDEX_TOKEN;
         break;
     case ']':
-        list->tokens[list->cursor].type = CLOSE_INDEX_TOKEN;
+        list->tokens[list->length].type = CLOSE_INDEX_TOKEN;
         break;
     default:
         return 0;
     }
-    list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
-    list->tokens[list->cursor].line_in_file = cr->current_line;
-    list->tokens[list->cursor].line_content = cr->line_begin;
-    list->tokens[list->cursor].text_len = 1;
+    list->tokens[list->length].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
+    list->tokens[list->length].line_in_file = cr->current_line;
+    list->tokens[list->length].line_content = cr->line_begin;
+    list->tokens[list->length].text_len = 1;
     ++*src;
     return 1;
 }
 
 int try_extract_seperator(current_read_data* cr, const char** src, TokenList* list) {
     if (**src == ',') {
-        list->tokens[list->cursor].type = SEPERATOR_TOKEN;
-        list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
-        list->tokens[list->cursor].line_in_file = cr->current_line;
-        list->tokens[list->cursor].line_content = cr->line_begin;
-        list->tokens[list->cursor].text_len = 1;
+        list->tokens[list->length].type = SEPERATOR_TOKEN;
+        list->tokens[list->length].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
+        list->tokens[list->length].line_in_file = cr->current_line;
+        list->tokens[list->length].line_content = cr->line_begin;
+        list->tokens[list->length].text_len = 1;
         ++*src;
         return 1;
     }
@@ -427,11 +427,11 @@ int try_extract_seperator(current_read_data* cr, const char** src, TokenList* li
 
 int try_extract_dot(current_read_data * cr, const char ** src, TokenList * list) {
     if (**src == '.') {
-        list->tokens[list->cursor].type = DOT_TOKEN;
-        list->tokens[list->cursor].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
-        list->tokens[list->cursor].line_in_file = cr->current_line;
-        list->tokens[list->cursor].line_content = cr->line_begin;
-        list->tokens[list->cursor].text_len = 1;
+        list->tokens[list->length].type = DOT_TOKEN;
+        list->tokens[list->length].char_in_line = ((unsigned long) *src - (unsigned long) cr->line_begin);
+        list->tokens[list->length].line_in_file = cr->current_line;
+        list->tokens[list->length].line_content = cr->line_begin;
+        list->tokens[list->length].text_len = 1;
         ++*src;
         return 1;
     }
@@ -531,7 +531,7 @@ TokenList lex(const char* src) {
         }
     }
     string_dict_destroy(&keyword_dict);
-    list.tokens = mrealloc(list.tokens, sizeof(Token) * list.cursor);
+    list.tokens = mrealloc(list.tokens, sizeof(Token) * list.length);
     list.has_error = cr.error;
     return list;
 }

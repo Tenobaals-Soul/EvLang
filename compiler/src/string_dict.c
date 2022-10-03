@@ -65,7 +65,7 @@ void string_dict_put(StringDict* dict, const char* key, void* val) {
     unsigned int raw_hash = hash_string(key);
     unsigned int hash = raw_hash % dict->capacity;
     string_dict_set(dict->items, dict->capacity, hash,
-                    (struct string_dict_item) {strmcpy(key), val, raw_hash});
+                    (struct string_dict_item) {strmdup(key), val, raw_hash});
     dict->count++;
 }
 

@@ -4,22 +4,19 @@
 - [x] read files
 - [x] tokenize
 - [ ] parsing
-    - [x] statement parsing
-    - [x] namespaces
-    - [x] structs
-    - [x] unsions
+    - [ ] statement parsing
+    - [ ] namespaces
+    - [ ] structs
+    - [ ] unsions
     - [ ] control structures
-        - [x] return
-        - [x] if
-        - [x] else
-        - [x] while
-        - [x] for
+        - [ ] return
+        - [ ] if
+        - [ ] else
+        - [ ] while
+        - [ ] for
         - [ ] switch
-    - [x] scalar initialisation
-    - [x] function calls
-    - [ ] convert to tree
-        - [ ] statements
-        - [ ] full structure
+    - [ ] scalar initialisation
+    - [ ] function calls
     - [ ] advanced types
         - [ ] arrays
             - [ ] array declaration
@@ -29,6 +26,9 @@
             - [ ] functions
             - [ ] calls
         - [ ] iterator syntax
+    - [ ] convert to tree
+        - [ ] statements
+        - [ ] structure
 - [ ] scope checking
     - [ ] accessability checks
 - [ ] bytecode

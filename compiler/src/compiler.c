@@ -74,11 +74,21 @@ void message_internal(const char* color_code, const char* line, const char* sour
     fflush(stdout);
 }
 
-UnresolvedEntry get_from_ident_dot_seq(StringDict* src, const char* name, TokenList* tokens,
-                                       int token_index, bool throw) {
+char* append_to_ident_dot_seq(char* seq, char* name) {
+    unsigned int len = 0, nlen = strlen(name);
+    for (; seq[len] || seq[len + 1]; len++);
+    seq = mrealloc(seq, len + nlen + 3);
+    seq[len] = 0;
+    memcpy(&seq[len] + 1, name, nlen);
+    seq[len + nlen + 1] = 0;
+    seq[len + nlen + 2] = 0;
+}
+
+UnresolvedEntry* get_from_ident_dot_seq(StringDict* src, const char* seq, TokenList* tokens,
+                                        int token_index, bool throw) {
     const char *env = enviroment;
-    const char *acs = name;
-    UnresolvedEntry found = NULL;
+    const char *acs = seq;
+    UnresolvedEntry* found = NULL;
     int word = 0;
     for (int i = 0; acs[i]; word++, i++) {
         found = src ? string_dict_get(src, acs + i) : NULL;
@@ -97,13 +107,13 @@ UnresolvedEntry get_from_ident_dot_seq(StringDict* src, const char* name, TokenL
             }
             return NULL;
         }
-        env = name;
+        env = seq;
         for (; acs[i]; i++);
         if (found->entry_type == ENTRY_NAMESPACE) {
-            src = &((Namespace) found)->scope;
+            src = &((Namespace*) found)->scope;
         }
         else if (found->entry_type == ENTRY_MODULE) {
-            src = &((Module) found)->scope;
+            src = &((Module*) found)->scope;
         }
     }
     return found;
@@ -296,7 +306,7 @@ void print_operator(BasicOperator operator) {
 }
 
 void print_tokens(TokenList l) {
-    for (unsigned long i = 0; i < l.cursor; i++) {
+    for (unsigned long i = 0; i < l.length; i++) {
         if (i)
             printf(" ");
         switch (l.tokens[i].type) {
@@ -390,7 +400,7 @@ void print_tokens(TokenList l) {
 }
 
 void free_tokens(TokenList token_list) {
-    for (unsigned long j = 0; j < token_list.cursor; j++) {
+    for (unsigned long j = 0; j < token_list.length; j++) {
         Token *t = token_list.tokens + j;
         if (t->type == IDENTIFIER_TOKEN) {
             mfree(t->identifier);
@@ -402,70 +412,70 @@ void free_tokens(TokenList token_list) {
     mfree(token_list.tokens);
 }
 
-void print_ast_internal2(Expression exp) {
+void print_ast_internal2(Expression* exp) {
     if (exp == NULL) {
         printf("?");
         return;
     }
     switch (exp->expression_type) {
     case EXPRESSION_CALL:
-        if (exp->expression_call.call == NULL) {
+        if (exp->pa_call->call == NULL) {
             printf("(unknown function)");
             break;
         }
-        printf("%s(", exp->expression_call.call->name);
+        printf("%s(", exp->pa_call->call->name);
         unsigned int i;
-        if (exp->expression_call.arg_count) {
-            for (i = 0; i < exp->expression_call.arg_count; i++) {
-                print_ast_internal2(exp->expression_call.args[i]);
+        if (exp->pa_call->arg_count) {
+            for (i = 0; i < exp->pa_call->arg_count; i++) {
+                print_ast_internal2(exp->pa_call->args[i]);
                 printf(", ");
             }
-            print_ast_internal2(exp->expression_call.args[i]);
+            print_ast_internal2(exp->pa_call->args[i]);
         }
         printf(")");
         break;
     case EXPRESSION_FIXED_VALUE:
-        print_fixed_value(exp->fixed_value);
+        print_fixed_value(exp->pa_fixed_value);
         break;
     case EXPRESSION_OPERATOR:
         printf("(");
-        print_ast_internal2(exp->expression_operator.left);
+        print_ast_internal2(exp->pa_operator->left);
         printf(") ");
-        print_operator(exp->expression_operator.operator);
+        print_operator(exp->pa_operator->operator);
         printf(" (");
-        print_ast_internal2(exp->expression_operator.right);
+        print_ast_internal2(exp->pa_operator->right);
         printf(")");
         break;
     case EXPRESSION_VAR:
-        printf("%s", exp->expression_variable->meta.name ?
-               exp->expression_variable->meta.name : "error-var");
+        printf("%s", exp->pa_variable->meta.name ?
+               exp->pa_variable->meta.name : "error-var");
         break;
     case EXPRESSION_UNARY_OPERATOR:
-        print_operator(exp->expression_operator.operator);
+        print_operator(exp->pa_operator->operator);
         printf("(");
-        print_ast_internal2(exp->expression_operator.left);
+        print_ast_internal2(exp->pa_operator->left);
         printf(")");
         break;
-    case EXPRESSION_INDEX:
-        print_ast_internal2(exp->expression_index.from);
+    case EXPRESSION_ARR_ACCESS:
+        print_ast_internal2(exp->pa_arr_access->from);
         printf("[");
-        print_ast_internal2(exp->expression_index.key);
+        print_ast_internal2(exp->pa_arr_access->key);
         printf("]");
         break;
     case EXPRESSION_ASSIGN:
         printf("(");
-        print_ast_internal2(exp->expression_operator.left);
+        print_ast_internal2(exp->pa_operator->left);
         printf(") = (");
-        print_ast_internal2(exp->expression_operator.right);
+        print_ast_internal2(exp->pa_operator->right);
         printf(")");
         break;
     }
 }
 
-void print_statement(Statement st) {
-    switch ((st->statement_type)) {
-        case STATEMENT_CALC:
-            print_ast_internal2(st->statement_calc.calc);
+void print_statement(Statement* st) {
+    switch (st->statement_type) {
+        case STATEMENT_EXPRESSION:
+            print_ast_internal2(st->pa_expression);
             break;
         case STATEMENT_FOR:
             printf("for // no more debug information supported");
@@ -476,15 +486,12 @@ void print_statement(Statement st) {
         case STATEMENT_RETURN:
             printf("return // no more debug information supported");
             break;
-        case STATEMENT_SWITCH:
-            printf("switch // no more debug information supported");
-            break;
         case STATEMENT_WHILE:
             break;
     }
 }
 
-void free_ast_expression(Expression exp);
+void free_ast_expression(Expression* exp);
 void print_text(Text text) {
     (void) text;
 }
@@ -492,26 +499,52 @@ void print_text(Text text) {
 void print_struct_data(StructData struct_data, const char* indent) {
     printf("%s{\n", indent);
     for (unsigned int i = 0; i < struct_data.len; i++) {
-        printf("    %s%s %s", indent, struct_data.value[i].type.unresolved, struct_data.value[i].meta.name);
+        printf("    %s%s %s", indent, struct_data.value[i].type->name, struct_data.value[i].meta.name);
     }
     printf("%s}\n", indent);
 }
 
-void print_ast_method(Method method, char* indent) {
-    printf("%s%s %s(", indent, method->return_type.unresolved, method->name);
-    unsigned int i;
-    if (method->arguments.len) {
-        for (i = 0; i < method->arguments.len - 1; i++) {
-            printf("%s %s, ", method->arguments.value[i].type.unresolved, method->arguments.value[i].meta.name);
+void print_type(Type* t) {
+    printf("%s", t->name);
+    if (t->generics.len) {
+        printf("<");
+        print_type(t->generics.types[0]);
+        for (int i = 1; i < t->generics.len; i++) {
+            printf(", ");
+            print_type(t->generics.types[i]);
         }
-        printf("%s %s, ", method->arguments.value[i].type.unresolved, method->arguments.value[i].meta.name);
+        printf(">");
+    }
+}
+
+void print_args(StructData arguments) {
+    unsigned int i = 0;
+    printf("(");
+    if (arguments.len) {
+        print_type(arguments.value[i].type);
+        printf(" %s", arguments.value[i].meta.name);
+        for (i = 0; i < arguments.len - 1; i++) {
+            print_type(arguments.value[i].type);
+            printf(", %s", arguments.value[i].meta.name);
+        }
     }
     printf(")");
-    print_struct_data(method->stack_data, indent);
-    printf("with code:%s\n", method->text.len ? "" : " NONE");
-    for (unsigned int i = 0; i < method->text.len; i++) {
+}
+
+void print_ast_method(Function* function, char* indent) {
+    printf("%s ", indent);
+    print_type(function->return_type);
+    if (function->arguments[0].len) {
+        printf(" ");
+        print_args(function->arguments[0]);
+    }
+    printf(" %s", function->name);
+    print_args(function->arguments[1]);
+    print_struct_data(function->stack_data, indent);
+    printf("with code:%s\n", function->text.len ? "" : " NONE");
+    for (unsigned int i = 0; i < function->text.len; i++) {
         printf("%s    ", indent);
-        print_text(method->text);
+        print_text(function->text);
         printf(";\n");
     }
 }
@@ -521,36 +554,30 @@ void print_ast_internal(void *env, const char *name, void *val) {
     char indent[layer * 4 + 1];
     memset(indent, ' ', layer * 4);
     indent[layer * 4] = 0;
-    UnresolvedEntry entry = val;
+    UnresolvedEntry* entry = val;
     switch (entry->entry_type) {
-    case ENTRY_PACKAGE:;
-        Package package = (Package) entry;
-        printf("package %s with %d entrys:\n", name, package->package_content.count);
-        layer++;
-        string_dict_complex_foreach(&package->package_content, print_ast_internal, &layer);
-        break;
     case ENTRY_MODULE:;
-        Module module = (Module) entry;
+        Module* module = (Module*) entry;
         printf("module %s with %d entrys:\n", name, module->scope.count);
         layer++;
         string_dict_complex_foreach(&module->scope, print_ast_internal, &layer);
         break;
     case ENTRY_STRUCT:;
-        Struct struct_entry = (Struct) entry;
+        Struct* struct_entry = (Struct*) entry;
         printf("%sstruct %s with %d entrys:\n", indent, name, struct_entry->data.len);
         for (unsigned int i = 0; i < struct_entry->data.len; i++) {
             print_ast_internal(&layer, struct_entry->data.value[i].meta.name, &struct_entry->data.value[i]);
         }
         break;
     case ENTRY_UNION:;
-        Struct union_entry = (Struct) entry;
+        Struct* union_entry = (Struct*) entry;
         printf("%sunion %s with %d entrys:\n", indent, name, union_entry->data.len);
         for (unsigned int i = 0; i < union_entry->data.len; i++) {
             print_ast_internal(&layer, union_entry->data.value[i].meta.name, &union_entry->data.value[i]);
         }
         break;
     case ENTRY_NAMESPACE:;
-        Namespace namespace = (Namespace) entry;
+        Namespace* namespace = (Namespace*) entry;
         printf("%sunion %s with %d entrys:\n", indent, name, namespace->struct_data.len + namespace->scope.count);
         for (unsigned int i = 0; i < namespace->struct_data.len; i++) {
             print_ast_internal(&layer, NULL, &namespace->struct_data.value[i]);
@@ -558,17 +585,19 @@ void print_ast_internal(void *env, const char *name, void *val) {
         layer++;
         string_dict_complex_foreach(&namespace->scope, print_ast_internal, &layer);
         break;
-    case ENTRY_METHODS:;
-        MethodTable table = (MethodTable) entry;
-        printf("%smethod %s with %d overloaded variant(s):\n", indent, name, table->len);
+    case ENTRY_FUNCTIONS:;
+        NameTable* table = (NameTable*) entry;
+        printf("%smethod %s with %d overloaded variant(s):\n", indent, name, table->fcount);
         layer++;
-        for (unsigned int i = 0; i < table->len; i++) {
-            print_ast_method(table->value[i], indent);
+        for (unsigned int i = 0; i < table->fcount; i++) {
+            print_ast_method(table->functions[i], indent);
         }
         break;
     case ENTRY_FIELD:;
-        Field field = (Field) entry;
-        printf("%s    %s %s\n", indent, field->type.unresolved, name);
+        Field* field = (Field*) entry;
+        printf("%s    ", indent);
+        print_type(field->type);
+        printf(" %s\n", name);
         break;
     }
 }
@@ -578,61 +607,63 @@ void print_ast(StringDict *dict) {
     string_dict_complex_foreach(dict, print_ast_internal, &layer);
 }
 
-void free_ast_expression(Expression exp) {
+void free_ast_expression(Expression* exp) {
     (void) exp;
 }
 
-void free_ast_statements(Text st) {
-    for (uint32_t i = 0; i < st.len; i++) {
-        switch (st.statements[i]->statement_type) {
-            case STATEMENT_CALC:
-                free_ast_expression(st.statements[i]->statement_calc.calc);
+void free_ast_statements(Text* st) {
+    for (uint32_t i = 0; i < st->len; i++) {
+        switch (st->statements[i]->statement_type) {
+            case STATEMENT_EXPRESSION:
+                free_ast_expression(st->statements[i]->pa_expression);
                 break;
             case STATEMENT_FOR:
-                free_ast_expression(st.statements[i]->statement_for.condition);
-                free_ast_statements(st.statements[i]->statement_for.first);
-                free_ast_statements(st.statements[i]->statement_for.last);
-                free_ast_statements(st.statements[i]->statement_for.text);
+                free_ast_expression(st->statements[i]->pa_for->condition);
+                free_ast_statements(&st->statements[i]->pa_for->first);
+                free_ast_statements(&st->statements[i]->pa_for->last);
+                free_ast_statements(&st->statements[i]->pa_for->text);
                 break;
             case STATEMENT_IF:
-                free_ast_expression(st.statements[i]->statement_if.condition);
-                free_ast_statements(st.statements[i]->statement_if.on_true);
-                free_ast_statements(st.statements[i]->statement_if.on_false);
+                free_ast_expression(st->statements[i]->pa_if->condition);
+                free_ast_statements(&st->statements[i]->pa_if->on_true);
+                free_ast_statements(&st->statements[i]->pa_if->on_false);
                 break;
             case STATEMENT_RETURN:
-                free_ast_expression(st.statements[i]->statement_return.return_value);
+                free_ast_expression(&st->statements[i]->pa_return);
                 break;
-            case STATEMENT_SWITCH:
-                printf("switch is not implemented yet\n");
-                exit(1);
             case STATEMENT_WHILE:
-                free_ast_expression(st.statements[i]->statement_while.condition);
-                free_ast_statements(st.statements[i]->statement_while.text);
+                free_ast_expression(&st->statements[i]->pa_while->condition);
+                free_ast_statements(&st->statements[i]->pa_while->text);
                 break;
         }
-        mfree(st.statements);
+        mfree(st->statements);
     }
+}
+
+void free_type(Type* t) {
+    for (int i = 0; i < t->generics.len; i++) free_type(t->generics.types[i]);
+    mfree(t->name);
 }
 
 void free_struct_data(StructData struct_data) {
     for (uint32_t i = 0; i < struct_data.len; i++) {
         mfree(struct_data.value[i].meta.name);
-        mfree(struct_data.value[i].type.unresolved);
+        free_type(struct_data.value[i].type);
     }
 }
 
 void free_ast(const char *key, void *val) {
     (void) key;
-    UnresolvedEntry entry = val;
+    UnresolvedEntry* entry = val;
     switch (entry->entry_type) {
     case ENTRY_MODULE:;
-        Module module = (Module) entry;
+        Module* module = (Module*) entry;
         string_dict_foreach(&module->scope, free_ast);
         string_dict_destroy(&module->scope);
-        free_ast_statements(module->text);
+        free_ast_statements(&module->text);
         break;
     case ENTRY_NAMESPACE:;
-        Namespace namespace = (Namespace) entry;
+        Namespace* namespace = (Namespace*) entry;
         string_dict_foreach(&namespace->scope, free_ast);
         string_dict_destroy(&namespace->scope);
         for (unsigned int i = 0; i < namespace->struct_data.len; i++) {
@@ -640,38 +671,34 @@ void free_ast(const char *key, void *val) {
         }
         break;
     case ENTRY_STRUCT:;
-        Struct struct_entry = (Struct) entry;
+        Struct* struct_entry = (Struct*) entry;
         for (unsigned int i = 0; i < struct_entry->data.len; i++) {
-            mfree(struct_entry->data.value[i].type.unresolved);
+            free_type(struct_entry->data.value[i].type);
             mfree(struct_entry->data.value[i].meta.name);
         }
         break;
     case ENTRY_UNION:;
-        Union union_entry = (Union) entry;
+        Union* union_entry = (Union*) entry;
         for (unsigned int i = 0; i < union_entry->data.len; i++) {
-            mfree(union_entry->data.value[i].type.unresolved);
+            free_type(union_entry->data.value[i].type);
             mfree(union_entry->data.value[i].meta.name);
         }
         break;
-    case ENTRY_METHODS:;
-        MethodTable methods = (MethodTable) entry;
-        for (uint32_t i = 0; i < methods->len; i++) {
-            Method method = methods->value[i];
-            free_ast_statements(method->text);
-            free_struct_data(method->arguments);
-            free_struct_data(method->stack_data);
-            mfree(method->return_type.unresolved);
-            mfree(method->name);
+    case ENTRY_FUNCTIONS:;
+        NameTable* methods = (NameTable*) entry;
+        for (uint32_t i = 0; i < methods->fcount; i++) {
+            Function* func = methods->functions[i];
+            free_ast_statements(&func->text);
+            free_struct_data(func->arguments[0]);
+            free_struct_data(func->arguments[1]);
+            free_struct_data(func->stack_data);
+            free_type(func->return_type);
+            mfree(func->name);
         }
         break;
-    case ENTRY_PACKAGE:;
-        Package package = (Package) entry;
-        string_dict_foreach(&package->package_content, free_ast);
-        string_dict_destroy(&package->package_content);
-        break;
     case ENTRY_FIELD:;
-        Field field = (Field) entry;
-        mfree(field->type.unresolved);
+        Field* field = (Field*) entry;
+        free_type(field->type);
         break;
     }
     if (entry->name)
@@ -745,7 +772,7 @@ int strcreplace(char* str, char search, char replace, int len) {
     return len;
 }
 
-UnresolvedEntry pack(Module module, char* path) {
+UnresolvedEntry* pack(Module* module, char* path) {
     char* name = path;
     for (; *path; path++) {
         if (*path == '/') {
@@ -789,9 +816,9 @@ int main(int argc, char **argv) {
         token_lists[i - 1] = token_list;
         print_tokens(token_list);
         printf("\n");
-        Module module = parse(token_list);
+        Module* module = parse(token_list);
         if (module) {
-            module->meta.name = strmcpy(get_enviroment());
+            module->meta.name = strmdup(get_enviroment());
             string_dict_put(&general_identifier_dict, module->meta.name, module);
         }
         else {
@@ -803,7 +830,7 @@ int main(int argc, char **argv) {
     printf("%s\n", has_errors ? "errors found" : "error free code");
     
     for (int i = 0; i < argc - 1; i++) {
-        if (token_lists[i].cursor == 0) continue;
+        if (token_lists[i].length == 0) continue;
         free_tokens(token_lists[i]);
         mfree(file_contents[i]);
     }

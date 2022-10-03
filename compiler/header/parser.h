@@ -2,8 +2,8 @@
 #define INCLUDE_PARSER_H
 #include<compiler.h>
 
-char* strmcpy(const char* src);
+char* strmdup(const char* src);
 
-Module parse(TokenList tokens);
+Module* parse(TokenList tokens);
 
 #endif
