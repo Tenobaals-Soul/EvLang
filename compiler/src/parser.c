@@ -10,18 +10,6 @@
 #include<stack.h>
 #include<limits.h>
 
-#define ALLOW_NONE                  (0)
-#define ALLOW_ALL                   (~0)
-#define ALLOW_VARIALBE_DECLARATION  (1 << 1)
-#define ALLOW_FUNCTION_DEFINITION   (1 << 2)
-#define ALLOW_CLASS_DEFINITION      (1 << 3)
-#define ALLOW_SEMICOLON_EXPRESSION  (1 << 4)
-#define ALLOW_STATEMENTS            (1 << 5)
-#define ALLOW_CONTROL_STRUCTURES    (1 << 6)
-#define ALLOW_VARIABLE_ASSIGNMENT   (1 << 7)
-
-#define SET(x) (1 << (x))
-
 #define IS_POSTFIX_UNARY(operator) (!!((1 << (operator)) & (\
     SET(ADD_OPERATOR) | SET(SUBTRACT_OPERATOR) |\
     SET(BINARY_NOT_OPERATOR) | SET(BOOL_NOT_OPERATOR)\
@@ -34,34 +22,6 @@
 #define IS_FORBIDDEN(operator) (!!((1 << (operator)) & (\
     SET(LAMBDA_ARROW_OPERATOR)\
 )))
-
-struct state parse_internal(TokenList tokens, struct state start_state,
-                            int no_throw_tokens, int allowed_states);
-
-struct state_args {
-    TokenList tokens;
-    int ignore_throw_mask;
-    int allowed_states;
-};
-
-struct state {
-    struct state (*call)(struct state_args, struct state);
-    StringDict* scope;
-    StructData* struct_data;
-    unsigned int token_index;
-    Stack paranthesis;
-    Stack operators;
-    Stack values;
-    char* positional_identifier[4];
-    unsigned int line_no;
-    union {
-        UnresolvedEntry current_entry;
-        Method current_method;
-        Field current_field;
-    };
-    bool error;
-    bool had_error;
-};
 
 void throw(Token* token, const char* format, ...) {
     va_list l;
@@ -79,873 +39,387 @@ void debug_log_throw(Token* token, const char* format, ...) {
     va_end(l);
 }
 
-bool avoid_throw(struct state_args args, struct state state) {
-    return !!(args.ignore_throw_mask & SET(args.tokens.tokens[state.token_index].type));
+typedef struct TokenListWrapper {
+    TokenList token_list;
+    unsigned int read_pos;
+} Cursor;
+
+typedef struct ParsingError {
+    struct ParsingError* caused_by;
+    char text[0];
+} ParsingError;
+
+Token* cursor_get(Cursor cursor) __attribute_const__;
+Token* cursor_get(Cursor cursor) {
+    if (cursor.read_pos >= cursor.token_list.length) return NULL;
+    else return &cursor.token_list.tokens[cursor.read_pos];
 }
 
-struct state substate(struct state state, struct state_args args,
-                      StringDict* scope, StructData* struct_data,
-                      struct state (*substate_start)(struct state_args, struct state),
-                      struct state (*on_exit_fine)(struct state_args, struct state),
-                      struct state (*on_exit_err)(struct state_args, struct state),
-                      int no_throw_token, int allowed_states) {
-    StringDict* old_scope = state.scope;
-    struct state n_state = state;
-    n_state.call = substate_start;
-    n_state.token_index++;
-    init_stack(&n_state.paranthesis);
-    n_state.scope = scope;
-    n_state.struct_data = struct_data;
-    n_state = parse_internal(args.tokens, n_state, no_throw_token, allowed_states);
-    state.token_index = n_state.token_index;
-    state.error = n_state.error;
-    state.had_error = n_state.had_error;
-    destroy_stack(&n_state.paranthesis);
-    state.scope = old_scope;
-    if (state.error) state.call = on_exit_err;
-    else state.call = on_exit_fine;
-    return state;
+void cursor_advance(Cursor* cursor) {
+    if (cursor->read_pos < cursor->token_list.length) cursor->read_pos++;
 }
 
-struct state scan_start(struct state_args args, struct state state);
-struct state scan_found_first_identifier(struct state_args args, struct state state);
-struct state scan_found_second_identifier(struct state_args args, struct state state);
-struct state scan_expect_operator(struct state_args args, struct state state);
-struct state scan_expect_value(struct state_args args, struct state state);
-
-struct state basic_recover(struct state_args args, struct state state) {
-    if (debug_run) debug_log_throw(&args.tokens.tokens[state.token_index], "%s", __func__);
-    state.error = true;
-    if (args.tokens.tokens[state.token_index].type == END_TOKEN ||
-        args.tokens.tokens[state.token_index].type == CLOSE_BLOCK_TOKEN ||
-        args.tokens.tokens[state.token_index].type == OPEN_BLOCK_TOKEN) {
-        state.call = NULL;
-    }
-    else {
-        state.token_index++;
-    }
-    return state;
+bool cursor_assert_type(Cursor cursor, TokenType t) __attribute_const__;
+bool cursor_assert_type(Cursor cursor, TokenType t) {
+    return (cursor_get(cursor) != NULL && cursor_get(cursor)->type == t);
 }
 
-static struct state insert_function(struct state_args args, struct state state, Token* token) {
-    Method method = mcalloc(sizeof(struct Method));
-    method->name = strmcpy(state.positional_identifier[1]);
-    method->return_type.unresolved = strmcpy(state.positional_identifier[0]);
-    UnresolvedEntry entry = string_dict_get(state.scope, method->name);
-    if (entry == NULL) {
-        MethodTable methods = mcalloc(sizeof(struct MethodTable));
-        methods->meta.entry_type = ENTRY_METHODS;
-        methods->meta.line = args.tokens.tokens[state.token_index - 1].line_in_file;
-        methods->meta.name = strmcpy(method->name);
-        string_dict_put(state.scope, methods->meta.name, methods);
-        entry =  &methods->meta;
-    }
-    else if (entry->entry_type != ENTRY_METHODS) {
-        throw(token, "redefinition of \"%s\" in line %u", entry->name, entry->line);
-        state.error = true;
-        return state;
-    }
-    MethodTable methods = (MethodTable) entry;
-    methods->len++;
-    methods->value = mrealloc(methods->value, sizeof(*methods->value) * methods->len);
-    methods->value[methods->len - 1] = method;
-    return state;
+typedef struct Declaration {
+    Field* field_data;
+    Expression* initializer;
+} Declaration;
+
+void struct_data_append(StructData* struct_data, Field* field_data) {
+    struct_data->value = mrealloc(
+        struct_data->value,
+        (struct_data->len + 1) * sizeof(struct_data->value[0])
+    );
+    field_data->offset = struct_data->len;
+    struct_data->value[struct_data->len++] = field_data[0];
 }
 
-static struct state insert_field(struct state state, char* type, char* name, Token* token) {
-    state.struct_data->len++;
-    state.struct_data->value = mrealloc(state.struct_data->value, state.struct_data->len * sizeof(state.struct_data->value[0]));
-    state.struct_data->value[state.struct_data->len - 1] = (struct Field) {
-        .meta = {
-            .entry_type = ENTRY_FIELD,
-            .line = token->line_in_file,
-            .name = strmcpy(name)
-        },
-        .type = {
-            .unresolved = strmcpy(type),
-            .resolved = NULL
-        }
-    };
-    return state;
+void text_append(Text* text, Statement* field_data) {
+    text->statements = mrealloc(
+        text->statements,
+        (text->len + 1) * sizeof(text->statements[0])
+    );
+    text->statements[text->len++] = field_data;
 }
 
-int get_operator_priority(Token* token) {
-    if (token->type == OPERATOR_TOKEN) {
-        switch (token->operator_type) {
-        case BINARY_AND_OPERATOR:
-        case BINARY_OR_OPERATOR:
-        case BINARY_XOR_OPERATOR:
-            return 1;
-        case MULTIPLY_OPERATOR:
-        case DIVIDE_OPERATOR:
-        case LEFT_SHIFT_OPERATOR:
-        case RIGHT_SHIFT_OPERATOR:
-            return 2;
-        case ADD_OPERATOR:
-        case SUBTRACT_OPERATOR:
-            return 3;
-        case EQUALS_OPERATOR:
-        case SMALLER_THAN_OPERATOR:
-        case GREATER_THAN_OPERATOR:
-        case SMALLER_EQUAL_OPERATOR:
-        case GREATER_EQUAL_OPERATOR:
-        case NOT_EQUAL_OPERATOR:
-            return 4;
-        case BOOL_AND_OPERATOR:
-        case BOOL_OR_OPERATOR:
-            return 5;
-        case INPLACE_ADD_OPERATOR:
-        case INPLACE_AND_OPERATOR:
-        case INPLACE_DIVIDE_OPERATOR:
-        case INPLACE_LSHIFT_OPERATOR:
-        case INPLACE_MULTIPLY_OPERATOR:
-        case INPLACE_OR_OPERATOR:
-        case INPLACE_POW_OPERATOR:
-        case INPLACE_RSHIFT_OPERAOR:
-        case INPLACE_SUBTRACT_OPERATOR:
-            return INT_MAX;
-        case BINARY_NOT_OPERATOR:
-        case INCREMENT_OPERATOR:
-        case DECREMENT_OPERATOR:
-        case BOOL_NOT_OPERATOR:
-            return -1;
-        }
-        return -1;
+void add_function_to_table(StringDict* dict, Function* to_add) {
+    const char* name = ((struct EntryBase*) to_add)->name;
+    NameTable* table = string_dict_get(dict, name);
+    if (table == NULL) {
+        table = mcalloc(sizeof(struct NameTable));
+        table->name = strmdup(name);
+        string_dict_put(dict, name, table);
     }
-    else if (token->type == DOT_TOKEN) {
-        return 0;
-    }
-    else if (token->type == ASSIGN_TOKEN) {
-        return INT_MAX;
-    }
-    else return -1;
+    table->fcount++;
+    table->functions = mrealloc(table->functions, table->fcount * sizeof(table->functions[0]));
+    table->functions[table->fcount - 1] = to_add;
 }
 
-struct state scan_expect_operator(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case OPERATOR_TOKEN:
-        state.token_index++;
-        state.call = IS_PREFIX_UNARY(token->operator_type)
-            ? scan_expect_operator
-            : scan_expect_value;
+void add_to_table(StringDict* dict, void* to_add) {
+    const char* name = ((UnresolvedEntry*) to_add)->name;
+    NameTable* table = string_dict_get(dict, name);
+    if (table == NULL) {
+        table = mcalloc(sizeof(NameTable));
+        table->name = strmdup(name);
+        string_dict_put(dict, name, table);
+    }
+    switch (((UnresolvedEntry*) to_add)->entry_type) {
+    case ENTRY_FIELD:
+        table->variable = to_add;
         break;
-    case CLOSE_PARANTHESIS_TOKEN:
-        if (peekchr(&state.paranthesis) == '(') {
-            popchr(&state.paranthesis);
-            state.token_index++;
-        }
-        else goto error;
+    case ENTRY_FUNCTIONS:
+        exit(1);
+    case ENTRY_MODULE:
+        table->container.module = to_add;
         break;
-    case DOT_TOKEN:
-        state.call = scan_expect_value;
-        state.token_index++;
+    case ENTRY_NAMESPACE:
+        table->container.nspc = to_add;
         break;
-    case END_TOKEN:
-        if (args.allowed_states & ALLOW_SEMICOLON_EXPRESSION) {
-            state.call = scan_start;
-            state.token_index++;
-        }
-        else {
-            goto error;
-        }
+    case ENTRY_STRUCT:
+        table->type.stct = to_add;
         break;
-    case ASSIGN_TOKEN:
-        state.token_index++;
-        state.call = scan_expect_value;
-        break;
-    case OPEN_INDEX_TOKEN:
-        state = substate(state, args, state.scope, state.struct_data,
-                         scan_expect_value, scan_expect_operator,
-                         NULL, SET(CLOSE_INDEX_TOKEN), ALLOW_NONE);
-        if (!state.error) state.token_index++;
-        break;
-    default:
-    error:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expected an operator");
-            state.error = true;
-            state.call = basic_recover;
-        }
+    case ENTRY_UNION:
+        table->type.onion = to_add;
         break;
     }
-    return state;
 }
 
-struct state scan_found_function_argument(struct state_args args, struct state state);
-
-struct state get_function_arg(struct state_args args, struct state state) {
-    return substate(state, args, state.scope, state.struct_data, scan_expect_value,
-                    scan_found_function_argument, NULL, SET(SEPERATOR_TOKEN) |
-                    SET(CLOSE_PARANTHESIS_TOKEN), ALLOW_NONE);
+Statement* expression_to_statement(Expression* exp) {
+    Statement* stm = mcalloc(sizeof(Statement));
+    stm->statement_type = STATEMENT_EXPRESSION;
+    stm->pa_expression = exp;
+    return stm;
 }
 
-struct state scan_expect_operator_allow_call(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case OPEN_PARANTHESIS_TOKEN:
-        state = get_function_arg(args, state);
-        break;
-    default:
-        state.call = scan_expect_operator;
+void free_exception(ParsingError* err) {
+    free(err);
+}
+
+#define swap(a, b) do { typeof(a) c = a; a = b; b = c; } while(0)
+
+void prio_err(int* max_matched_token, int* current_matched_token,
+              ParsingError** best_match_error, ParsingError** err_wr_buffer) {
+    if (*current_matched_token > *max_matched_token) {
+        *max_matched_token = *current_matched_token;
+        swap(*best_match_error, *err_wr_buffer);
     }
-    return state;
+    free_exception(*err_wr_buffer);
 }
 
-struct state scan_found_function_argument(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case SEPERATOR_TOKEN:
-        state = get_function_arg(args, state);
-        break;
-    case CLOSE_PARANTHESIS_TOKEN:
-        state.token_index++;
-        state.call = scan_expect_operator;
-        break;
-    default:
-        if (avoid_throw(args, state)){
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expected an operator");
-            state.error = true;
-            state.call = basic_recover;
-        }
-        break;
-    }
-    return state;
+ParsingError* make_parsing_error(ParsingError* caused_by, char* m, ...) {
+    va_list l;
+    va_start(l, m);
+    unsigned int len = vsnprintf(NULL, 0, m, l);
+    va_end(l);
+    ParsingError* e = malloc(sizeof(ParsingError) + len + 1);
+    va_start(l, m);
+    vsnprintf(e->text, 0, m, l);
+    va_end(l);
+    e->caused_by = caused_by;
+    return e;
 }
 
-struct state scan_found_function_declaration(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case OPEN_BLOCK_TOKEN:
-        state.token_index++;
-        state.call = scan_start;
-        pushchr(&state.paranthesis, '{');
-        break;
-    case ASSIGN_TOKEN:
-        state.token_index++;
-        state.call = scan_expect_value;
-        break;
-    case END_TOKEN:
-        state.token_index++;
-        state.call = scan_start;
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expected =, ; of {");
-            state.call = basic_recover;
-            state.error = NULL;
-        }
-        break;
-    }
-    return state;
-}
+/**
+ * PARSING RULES
+ * module:      [decl|struct|union|namespc|func]*
+ * name:        ident[.ident]*
+ * type:        name[<name[,name]*>]?[\[num?\]]?
+ * decl:        type ident [;| = exp;]
+ * struct:      "struct" ident[<ident[,ident]*]? { [decl]* }
+ * union:       "struct" ident[<ident[,ident]*]? { [type ident]* }
+ * namespc:     "namespace" ident { [func|struct|namespc|union]* }
+ * exp:         [[op|call|val]|(exp)]
+ * val:         [num|str|bool|char|lambda]
+ * op:          exp operator exp|prefix-unary exp|exp postfix-unary|exp[\[exp\]]
+ * call:        val([exp[,exp]*]?)
+ * args:        (type ident[,type ident]*)
+ * func:        type args? .ident args [block| = exp;]
+ * stm:         ;|block|exp;|if exp stm [else stm]?|while exp stm|
+ *              forl|return exp;|do stm while exp
+ * forl:        for [decl|exp][,decl|,exp]*;exp[,exp]*;exp[,exp]*stm
+ */
 
-struct state found_function_argument_definition(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case SEPERATOR_TOKEN:
-        state = substate(state, args, state.scope, state.struct_data,
-                         scan_start, found_function_argument_definition,
-                         NULL, SET(SEPERATOR_TOKEN) | SET(CLOSE_PARANTHESIS_TOKEN),
-                         ALLOW_SEMICOLON_EXPRESSION | ALLOW_VARIALBE_DECLARATION);
-        break;
-    case CLOSE_PARANTHESIS_TOKEN:
-        state.token_index++;
-        state.call = scan_found_function_declaration;
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "unexpected token");
-            state.call = basic_recover;
-            state.error = NULL;
-        }
-        break;
-    }
-    return state;
-}
+Module* parse_module(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
+char* parse_name(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
+Type* parse_type(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
+Declaration* parse_declaration(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
+Struct* parse_struct(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
+Union* parse_union(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
+Namespace* parse_namespace(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
+Expression* parse_expression(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
+Expression* parse_value(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
+Expression* parse_operation(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
+Expression* parse_call(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
+StructData* parse_args(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
+Function* parse_function(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
+Statement* parse_statement(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
+Statement* parse_for_loop(Cursor* lptr, ParsingError** eptr, int* matched_tokens);
 
-struct state scan_found_second_identifier(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case ASSIGN_TOKEN:
-        if (!(args.allowed_states & ALLOW_VARIABLE_ASSIGNMENT)) {
-            if (avoid_throw(args, state)) {
-                state.call = NULL;
-            }
-            else {
-                throw(token, "an assigment is not allowed here");
-                state.call = basic_recover;
-                state.error = NULL;
-            }
-            break;
-        }
-        state = insert_field(state, state.positional_identifier[0], state.positional_identifier[1], token);
-        state.call = scan_expect_value;
-        state.token_index++;
-        break;
-    case END_TOKEN:
-        state = insert_field(state, state.positional_identifier[0], state.positional_identifier[1], token);
-        state.call = scan_start;
-        state.token_index++;
-        break;
-    case OPEN_PARANTHESIS_TOKEN:
-        state = substate(state, args, state.scope, state.struct_data,
-                         scan_start, found_function_argument_definition,
-                         NULL, SET(SEPERATOR_TOKEN) | SET(CLOSE_PARANTHESIS_TOKEN),
-                         ALLOW_SEMICOLON_EXPRESSION | ALLOW_VARIALBE_DECLARATION);
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expected an assignment or end of statement");
-            state.call = basic_recover;
-            state.error = NULL;
-        }
-        break;
-    }
-    return state;
-}
-
-struct state scan_found_first_identifier(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    if (token->type == IDENTIFIER_TOKEN && (args.allowed_states & ALLOW_VARIALBE_DECLARATION ||
-        args.allowed_states & ALLOW_FUNCTION_DEFINITION)) {
-        state.positional_identifier[1] = token->identifier;
-        state.token_index++;
-        state.call = scan_found_second_identifier;
-    }
-    else {
-        state.call = scan_expect_operator_allow_call;
-    }
-    return state;
-}
-
-struct state found_scalar_initialisation_expression(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case SEPERATOR_TOKEN:
-        state = substate(state, args, state.scope, state.struct_data, scan_start,
-                         found_scalar_initialisation_expression, NULL,
-                         SET(SEPERATOR_TOKEN) | SET(CLOSE_BLOCK_TOKEN),
-                         ALLOW_SEMICOLON_EXPRESSION);
-        break;
-    case CLOSE_BLOCK_TOKEN:
-        state.token_index++;
-        state.call = scan_expect_operator;
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expected , or }");
-            state.error = true;
-            state.call = basic_recover;
-            state.token_index++;
-        }
-        break;
-    }
-    return state;
-}
-
-struct state scan_expect_value(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case OPERATOR_TOKEN:
-        state.token_index++;
-        if (IS_POSTFIX_UNARY(token->operator_type)) {
-            state.call = scan_expect_value;
-        }
-        else {
-            goto error;
-        }
-        break;
-    case FIXED_VALUE_TOKEN:
-        state.token_index++;
-        state.call = scan_expect_operator;
-        break;
-    case OPEN_PARANTHESIS_TOKEN:
-        state.token_index++;
-        pushchr(&state.paranthesis, '(');
-        break;
-    case IDENTIFIER_TOKEN:
-        state.token_index++;
-        state.call = scan_expect_operator_allow_call;
-        break;
-    case OPEN_BLOCK_TOKEN:
-        state = substate(state, args, state.scope, state.struct_data, scan_start,
-                         found_scalar_initialisation_expression, NULL,
-                         SET(SEPERATOR_TOKEN) | SET(CLOSE_BLOCK_TOKEN),
-                         ALLOW_SEMICOLON_EXPRESSION);
-        break;
-    case SEPERATOR_TOKEN:
-        // this needs to be done for function arguments
-        throw(token, "unexpected token");
-        state.call = basic_recover;
-        state.error = true;
-        break;
-    default:
-error:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "unexpected token");
-            state.error = true;
-            state.call = basic_recover;
-            state.token_index++;
-        }
-        break;
-    }
-    return state;
-}
-
-Namespace make_namespace(char* name, Token* token) {
-    Namespace container = mcalloc(sizeof(struct Namespace));
-    container->meta.entry_type = ENTRY_NAMESPACE;
-    container->meta.name = strmcpy(name);
-    container->meta.line = token->line_in_file;
-    string_dict_init(&container->scope);
-    return container;
-}
-
-struct state scan_expect_namespace_begin(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case OPEN_BLOCK_TOKEN:
-        Namespace nscope = make_namespace(state.positional_identifier[0], token);
-        state = substate(state, args, &nscope->scope, &nscope->struct_data, scan_start,
-                         scan_start, NULL, SET(CLOSE_BLOCK_TOKEN), ALLOW_ALL);
-        string_dict_put(state.scope, nscope->meta.name, nscope);
-        if (!state.error) state.token_index++;
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expected \"{\"");
-            state.error = true;
-            state.call = basic_recover;
-            state.token_index++;
-        }
-        break;
-    }
-    return state;
-}
-
-struct state scan_expect_namespace_name(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case IDENTIFIER_TOKEN:
-        state.call = scan_expect_namespace_begin;
-        state.positional_identifier[0] = token->identifier;
-        state.token_index++;
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expected a name");
-            state.error = true;
-            state.call = basic_recover;
-            state.token_index++;
-        }
-        break;
-    }
-    return state;
-}
-
-Struct make_struct(char* name, Token* token) {
-    Struct container = mcalloc(sizeof(struct Struct));
-    container->meta.entry_type = ENTRY_STRUCT;
-    container->meta.name = strmcpy(name);
-    container->meta.line = token->line_in_file;
-    return container;
-}
-
-struct state scan_expect_struct_begin(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case OPEN_BLOCK_TOKEN:
-        Struct nscope = make_struct(state.positional_identifier[0], token);
-        state = substate(state, args, NULL, &nscope->data,
-                         scan_start, scan_start, NULL, SET(CLOSE_BLOCK_TOKEN),
-                         ALLOW_VARIALBE_DECLARATION | ALLOW_SEMICOLON_EXPRESSION | ALLOW_VARIABLE_ASSIGNMENT);
-        string_dict_put(state.scope, nscope->meta.name, nscope);
-        if (!state.error) state.token_index++;
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expected \"{\"");
-            state.error = true;
-            state.call = basic_recover;
-            state.token_index++;
-        }
-        break;
-    }
-    return state;
-}
-
-struct state scan_expect_struct_name(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case IDENTIFIER_TOKEN:
-        state.call = scan_expect_struct_begin;
-        state.positional_identifier[0] = token->identifier;
-        state.token_index++;
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expected a name");
-            state.error = true;
-            state.call = basic_recover;
-            state.token_index++;
-        }
-        break;
-    }
-    return state;
-}
-
-Union make_union(char* name, Token* token) {
-    Union container = mcalloc(sizeof(struct Union));
-    container->meta.entry_type = ENTRY_UNION;
-    container->meta.line = token->line_in_file;
-    container->meta.name = strmcpy(name);
-    return container;
-}
-
-struct state scan_expect_union_begin(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case OPEN_BLOCK_TOKEN:
-        Union nscope = make_union(state.positional_identifier[0], token);
-        state = substate(state, args, NULL, &nscope->data,
-                         scan_start, scan_start, NULL, SET(CLOSE_BLOCK_TOKEN),
-                         ALLOW_VARIALBE_DECLARATION);
-        string_dict_put(state.scope, nscope->meta.name, nscope);
-        if (!state.error) state.token_index++;
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expected \"{\"");
-            state.error = true;
-            state.call = basic_recover;
-            state.token_index++;
-        }
-        break;
-    }
-    return state;
-}
-
-struct state scan_expect_union_name(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case IDENTIFIER_TOKEN:
-        state.call = scan_expect_union_begin;
-        state.positional_identifier[0] = token->identifier;
-        state.token_index++;
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expected a name");
-            state.error = true;
-            state.call = basic_recover;
-            state.token_index++;
-        }
-        break;
-    }
-    return state;
-}
-
-struct state scan_expect_definition_name(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case IDENTIFIER_TOKEN:
-        state.token_index++;
-        state.call = scan_found_second_identifier;
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expecten a name");
-            state.error = true;
-            state.call = basic_recover;
-            state.token_index++;
-        }
-        break;
-    }
-    return state;
-}
-
-struct state scan_expect_definition(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case K_NAMESPACE_TOKEN:
-        state.call = scan_expect_namespace_name;
-        state.line_no = token->line_in_file;
-        state.token_index++;
-        break;
-    case K_STRUCT_TOKEN:
-        state.call = scan_expect_struct_name;
-        state.token_index++;
-        break;
-    case K_UNION_TOKEN:
-        state.call = scan_expect_union_name;
-        state.token_index++;
-        break;
-    case IDENTIFIER_TOKEN:
-        state.token_index++;
-        state.call = scan_expect_definition_name;
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expecten an , or ; after an expression");
-            state.error = true;
-            state.call = basic_recover;
-            state.token_index++;
-        }
-        break;
-    }
-    return state;
-}
-
-struct state scan_expect_value_or_definition(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case K_PRIVATE_TOKEN:
-    case K_PROTECTED_TOKEN:
-    case K_PUBLIC_TOKEN:
-        state.call = scan_expect_definition;
-        state.token_index++;
-        break;
-    case K_NAMESPACE_TOKEN:
-        state.call = scan_expect_namespace_name;
-        state.line_no = token->line_in_file;
-        state.token_index++;
-        break;
-    case K_STRUCT_TOKEN:
-        state.call = scan_expect_struct_name;
-        state.token_index++;
-        break;
-    case K_UNION_TOKEN:
-        state.call = scan_expect_union_name;
-        state.token_index++;
-        break;
-    case IDENTIFIER_TOKEN:
-        state.token_index++;
-        state.call = scan_expect_definition_name;
-        break;
-    default:
-        state.call = scan_expect_value;
-    }
-    return state;
-}
-
-struct state scan_found_second_for_statement(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case END_TOKEN:
-        state = substate(state, args, state.scope, state.struct_data,
-                         scan_expect_value, scan_start, NULL,
-                         SET(OPEN_BLOCK_TOKEN), ALLOW_VARIALBE_DECLARATION);
-        if (!state.error) state.call = scan_start;
-        break;
-    case SEPERATOR_TOKEN:
-        state = substate(state, args, state.scope, state.struct_data,
-                         scan_expect_value, scan_found_second_for_statement, NULL,
-                         SET(OPEN_BLOCK_TOKEN), ALLOW_VARIALBE_DECLARATION);
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expecten an , or ; after an expression");
-            state.error = true;
-            state.call = basic_recover;
-            state.token_index++;
-        }
-        break;
-    }
-    return state;
-}
-
-struct state scan_found_first_for_statement(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case END_TOKEN:
-        state = substate(state, args, state.scope, state.struct_data,
-                         scan_expect_value, scan_found_second_for_statement, NULL,
-                        SET(END_TOKEN) | SET(SEPERATOR_TOKEN), ALLOW_VARIALBE_DECLARATION);
-        break;
-    case SEPERATOR_TOKEN:
-        state = substate(state, args, state.scope, state.struct_data,
-                         scan_expect_value, scan_found_first_for_statement, NULL,
-                        SET(END_TOKEN) | SET(SEPERATOR_TOKEN), ALLOW_VARIALBE_DECLARATION);
-        break;
-    default:
-        if (avoid_throw(args, state)) {
-            state.call = NULL;
-        }
-        else {
-            throw(token, "expecten an , or ; after an expression");
-            state.error = true;
-            state.call = basic_recover;
-            state.token_index++;
-        }
-    }
-    return state;
-}
-
-struct state scan_start(struct state_args args, struct state state) {
-    Token* token = &args.tokens.tokens[state.token_index];
-    if (debug_run) debug_log_throw(token, "%s", __func__);
-    switch (token->type) {
-    case IDENTIFIER_TOKEN:
-        state.positional_identifier[0] = token->identifier;
-        state.token_index++;
-        state.call = scan_found_first_identifier;
-        break;
-    case OPEN_BLOCK_TOKEN:
-        pushchr(&state.paranthesis, '{');
-        state.token_index++;
-        break;
-    case CLOSE_BLOCK_TOKEN:
-        if (peekchr(&state.paranthesis) == '{') {
-            popchr(&state.paranthesis);
-            state.token_index++;
-        }
-        else goto error;
-        break;
-    case C_IF_TOKEN:
-        if (!(args.allowed_states & ALLOW_CONTROL_STRUCTURES)) goto error;
-        state = substate(state, args, state.scope, state.struct_data, scan_expect_value,
-                         scan_start, NULL, SET(OPEN_BLOCK_TOKEN) | SET(END_TOKEN) |
-                         SET(IDENTIFIER_TOKEN) | SET(C_IF_TOKEN) | SET(C_RETURN_TOKEN) |
-                         SET(C_FOR_TOKEN) | SET(C_WHILE_TOKEN), ALLOW_NONE);
-        break;
-    case C_FOR_TOKEN:
-        if (!(args.allowed_states & ALLOW_CONTROL_STRUCTURES)) goto error;
-        state = substate(state, args, state.scope, state.struct_data, scan_start,
-                         scan_found_first_for_statement, NULL, SET(END_TOKEN) |
-                         SET(SEPERATOR_TOKEN), ALLOW_VARIALBE_DECLARATION);
-        break;
-    case C_WHILE_TOKEN:
-        if (!(args.allowed_states & ALLOW_CONTROL_STRUCTURES)) goto error;
-        state = substate(state, args, state.scope, state.struct_data, scan_expect_value,
-                         scan_start, NULL, SET(OPEN_BLOCK_TOKEN) | SET(END_TOKEN) |
-                         SET(IDENTIFIER_TOKEN) | SET(C_IF_TOKEN) | SET(C_RETURN_TOKEN) |
-                         SET(C_FOR_TOKEN) | SET(C_WHILE_TOKEN), ALLOW_NONE);
-        break;
-    case END_TOKEN:
-        state.token_index++;
-        break;
-    case C_RETURN_TOKEN:
-        state.token_index++;
-        state.call = scan_expect_value;
-        break;
-    case C_ELSE_TOKEN:
-        if (!(args.allowed_states & ALLOW_CONTROL_STRUCTURES)) goto error;
-        state.token_index++;
-        state.call = scan_start;
-        break;
-    default:
-        error:
-        state.call = scan_expect_value_or_definition;
-    }
-    return state;
-}
-
-struct state parse_internal(TokenList tokens, struct state start_state,
-                            int no_throw_tokens, int allowed_states) {
-    struct state state = start_state;
-    struct state_args state_args = {
-        .ignore_throw_mask = no_throw_tokens,
-        .tokens = tokens,
-        .allowed_states = allowed_states
-    };
+/**
+ * @brief module:[decl|struct|union|namespc|func|stm]*
+ * 
+ * @param lptr 
+ * @param eptr 
+ * @param matched_tokens 
+ * @return Module* 
+ */
+Module* parse_module(Cursor* lptr, ParsingError** eptr, int* matched_tokens) {
+    (void) eptr;
+    Cursor l = *lptr;
+    int max_matched_token = 0, current_matched_token = 0;
+    ParsingError* best_match_error = NULL;
+    ParsingError* err_wr_buffer = NULL;
+    Module* module = mcalloc(sizeof(module));
     for (;;) {
-        if (state.token_index >= tokens.cursor) break;
-        if (state.call) state = state.call(state_args, state);
-        else return state;
-        state.had_error |= state.error;
+        if (cursor_get(l) == NULL) {
+            cursor_advance(&l);
+            *matched_tokens = l.read_pos - lptr->read_pos;
+            *lptr = l;
+            return module;
+        }
+        union {
+            Declaration* decl;
+            UnresolvedEntry* base;
+            Struct* stct;
+            Union* onion;
+            Namespace* nspc;
+            Function* func;
+            Statement* stm;
+        } parse_result;
+        if ((parse_result.decl = parse_declaration(&l, &err_wr_buffer, &current_matched_token))) {
+            prio_err(&max_matched_token, &current_matched_token, &best_match_error, &err_wr_buffer);
+            struct_data_append(&module->globals, parse_result.decl->field_data);
+            add_to_table(&module->scope, parse_result.decl->field_data);
+            text_append(&module->text, expression_to_statement(parse_result.decl->initializer));
+        }
+        else if ((parse_result.stct = parse_struct(&l, &err_wr_buffer, &current_matched_token))) {
+            prio_err(&max_matched_token, &current_matched_token, &best_match_error, &err_wr_buffer);
+            add_to_table(&module->scope, parse_result.base);
+        }
+        else if ((parse_result.onion = parse_union(&l, &err_wr_buffer, &current_matched_token))) {
+            prio_err(&max_matched_token, &current_matched_token, &best_match_error, &err_wr_buffer);
+            add_to_table(&module->scope, parse_result.base);
+        }
+        else if ((parse_result.nspc = parse_namespace(&l, &err_wr_buffer, &current_matched_token))) {
+            prio_err(&max_matched_token, &current_matched_token, &best_match_error, &err_wr_buffer);
+            add_to_table(&module->scope, parse_result.base);
+        }
+        else if ((parse_result.func = parse_function(&l, &err_wr_buffer, &current_matched_token))) {
+            prio_err(&max_matched_token, &current_matched_token, &best_match_error, &err_wr_buffer);
+            add_function_to_table(&module->scope, parse_result.func);
+        }
+        else if ((parse_result.stm = parse_statement(&l, &err_wr_buffer, &current_matched_token))) {
+            prio_err(&max_matched_token, &current_matched_token, &best_match_error, &err_wr_buffer);
+            text_append(&module->text, parse_result.stm);
+        }
+        else {
+            free_ast(NULL, module);
+            *eptr = best_match_error;
+            return NULL;
+        }
     }
-    return state;
 }
 
-Module parse(TokenList tokens) {
-    Module module = mcalloc(sizeof(struct Module));
-    module->meta.entry_type = ENTRY_MODULE;
-    string_dict_init(&module->scope);
-    struct state state = {
-        .call = scan_start,
-        .struct_data = &module->globals,
-        .scope = &module->scope
-    };
-    init_stack(&state.paranthesis);
-    while (state.token_index < tokens.cursor) {
-        state = parse_internal(tokens, state, ALLOW_NONE, ALLOW_ALL);
-        state.call = scan_start;
-    }
-    destroy_stack(&state.paranthesis);
-    if (state.had_error) {
-        free_ast(NULL, module);
+char* parse_name(Cursor* lptr, ParsingError** eptr, int* matched_tokens) {
+    Cursor l = *lptr;
+    Module* module = mcalloc(sizeof(module));
+    if (!cursor_assert_type(l, IDENTIFIER_TOKEN)) {
+        *eptr = make_parsing_error(NULL, "expected an identifier");
         return NULL;
     }
-    else {
-        return module;
+    char* ret_val = ident_dot_seq_append(NULL, cursor_get(l)->identifier);
+    cursor_advance(&l);
+    for (;;) {
+        *matched_tokens = l.read_pos - lptr->read_pos;
+        *lptr = l;
+        if (!cursor_assert_type(l, DOT_TOKEN)) {
+            return ret_val;
+        }
+        cursor_advance(&l);
+        if (!cursor_assert_type(l, IDENTIFIER_TOKEN)) {
+            *eptr = make_parsing_error(NULL, "expected an identifier");
+            return NULL;
+        }
+        cursor_advance(&l);
+        ret_val = ident_dot_seq_append(ret_val, cursor_get(l)->identifier);
     }
+}
+
+Type* parse_type(Cursor* lptr, ParsingError** eptr, int* matched_tokens) {
+    Cursor l = *lptr;
+    int current_matched_token = 0;
+    ParsingError* err_wr_buffer;
+    char* name;
+    if (!(name = parse_name(&l, &err_wr_buffer, &current_matched_token))) {
+        *matched_tokens = l.read_pos - lptr->read_pos;
+        *eptr = make_parsing_error(err_wr_buffer, "expected a name");
+        return NULL;
+    }
+    Type* t = malloc(sizeof(Type));
+    t->name = name;
+    cursor_advance(&l);
+    if (!cursor_assert_type(l, OPERATOR_TOKEN) ||
+        cursor_get(l)->operator_type != SMALLER_THAN_OPERATOR) {
+        *matched_tokens = l.read_pos - lptr->read_pos;
+        *lptr = l;
+        return t;
+    }
+    cursor_advance(&l);
+    Type* generic;
+    if (!(generic = parse_type(&l, &err_wr_buffer, &current_matched_token))) {
+        free_type(t);
+        *matched_tokens = l.read_pos - lptr->read_pos + current_matched_token;
+        *eptr = make_parsing_error(err_wr_buffer, "expected a type");
+        return NULL;
+    }
+    generic->generics.types = realloc(generic->generics.types, sizeof(Type*) * (generic->generics.len + 1));
+    generic->generics.types[generic->generics.len++] = generic;
+    cursor_advance(&l);
+    for (;;) {
+        if (!cursor_assert_type(l, SEPERATOR_TOKEN)) {
+            break;
+        }
+        cursor_advance(&l);
+        if (!(generic = parse_type(&l, &err_wr_buffer, &current_matched_token))) {
+            free_type(t);
+            *matched_tokens = l.read_pos - lptr->read_pos + current_matched_token;
+            *eptr = make_parsing_error(err_wr_buffer, "expected a type");
+            return NULL;
+        }
+        generic->generics.types = realloc(generic->generics.types, sizeof(Type*) * (generic->generics.len + 1));
+        generic->generics.types[generic->generics.len++] = generic;
+    }
+    if (!cursor_assert_type(l, OPERATOR_TOKEN) ||
+        cursor_get(l)->operator_type != GREATER_THAN_OPERATOR) {
+        free_type(t);
+        *matched_tokens = l.read_pos - lptr->read_pos;
+        *eptr = make_parsing_error(err_wr_buffer, "expected a , or >");
+        return NULL;
+    }
+    *matched_tokens = l.read_pos - lptr->read_pos;
+    *lptr = l;
+    return t;
+}
+
+/**
+ * @brief decl: type ident [;| = exp;]
+ * 
+ * @param lptr 
+ * @param eptr 
+ * @param matched_tokens 
+ * @return Declaration* 
+ */
+Declaration* parse_declaration(Cursor* lptr, ParsingError** eptr, int* matched_tokens) {
+    Cursor l = *lptr;
+    int current_matched_token = 0;
+    ParsingError* err_wr_buffer;
+    Type* type = parse_type(&l, &err_wr_buffer, &current_matched_token);
+    if (!type) {
+        *matched_tokens = l.read_pos - lptr->read_pos + current_matched_token;
+        *eptr = make_parsing_error(err_wr_buffer, "expected a type");
+        return NULL;
+    }
+    if (!cursor_assert_type(l, IDENTIFIER_TOKEN)) {
+        *matched_tokens = l.read_pos - lptr->read_pos;
+        *eptr = make_parsing_error(err_wr_buffer, "expected an identifier");
+        return NULL;
+    }
+    char* name = cursor_get(l)->identifier;
+    cursor_advance(&l);
+    if (cursor_assert_type(l, END_TOKEN)) {
+        Declaration* decl = malloc(sizeof(Declaration));
+        decl->field_data = malloc(sizeof(Field));
+        *decl->field_data = (Field) {
+            .meta = {
+                .entry_type = ENTRY_FIELD,
+                .line = 0,
+                .name = name
+            },
+            .offset = 0,
+            .type = type
+        };
+        decl->initializer = NULL;
+        return decl;
+    }
+    else if (!cursor_assert_type(l, ASSIGN_TOKEN)) {
+        free_type(type);
+        *matched_tokens = l.read_pos - lptr->read_pos;
+        *eptr = make_parsing_error(err_wr_buffer, "expected a = or ;");
+        return NULL;
+    }
+    Expression* exp = parse_expression(&l, &err_wr_buffer, &current_matched_token);
+    if (exp == NULL) {
+        *matched_tokens = l.read_pos - lptr->read_pos + current_matched_token;
+        *eptr = make_parsing_error(err_wr_buffer, "expected an expression");
+        return NULL;
+    }
+    Declaration* decl = malloc(sizeof(Declaration));
+    decl->field_data = malloc(sizeof(Field));
+    *decl->field_data = (Field) {
+        .meta = {
+            .entry_type = ENTRY_FIELD,
+            .line = 0,
+            .name = name
+        },
+        .offset = 0,
+        .type = type
+    };
+    decl->initializer = exp;
+    return decl;
+}
+
+Module* parse(TokenList tokens) {
+    Cursor c = {
+        .read_pos = 0,
+        .token_list = tokens
+    };
+    ParsingError* err;
+    int matched_tokens;
+    Module* out = parse_module(&c, &err, &matched_tokens);
+    free_exception(err);
+    return out;
 }

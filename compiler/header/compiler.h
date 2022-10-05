@@ -8,9 +8,6 @@
 
 extern bool debug_run;
 
-// "src\0\0", "append\0" -> "src\0append\0\0"
-char* append_accessor_str(char* src, char* append);
-
 typedef enum FixedDataType {
     INTEGER, FLOATING, STRING, BOOLEAN, CHARACTER
 } FixedDataType;
@@ -62,7 +59,7 @@ typedef struct Token {
     const char* line_content;
     union {
         char* identifier;
-        struct {
+        struct fixed_value {
             FixedDataType type;
             union {
                 uint64_t integer;
@@ -78,6 +75,7 @@ typedef struct Token {
 
 typedef struct TokenList {
     Token* tokens;
+    unsigned int length;
     unsigned int cursor;
     bool has_error;
 } TokenList;
@@ -107,36 +105,43 @@ void free_ast(const char* key, void* val);
 
 // src\0src\0\0 -> StackedData
 
-typedef struct Expression* Expression;
-typedef struct Statement* Statement;
-
 typedef struct Text Text;
 typedef struct Type Type;
 typedef struct StructData StructData;
 
-typedef struct Method* Method;
+typedef struct Function Function;
 
-typedef struct EntryBase* UnresolvedEntry;
+typedef struct EntryBase UnresolvedEntry;
 
-typedef struct Package* Package;
-typedef struct Module* Module;
-typedef struct Struct* Struct;
-typedef struct Union* Union;
-typedef struct Namespace* Namespace;
-typedef struct Field* Field;
-typedef struct MethodTable* MethodTable;
+typedef struct Module Module;
+typedef struct Struct Struct;
+typedef struct Union Union;
+typedef struct Namespace Namespace;
+typedef struct Field Field;
+typedef struct NameTable NameTable;
 
-UnresolvedEntry get_from_ident_dot_seq(StringDict* src, const char* name,
-                                       TokenList* tokens, int token_index, bool throw);
+typedef struct Statement Statement;
+typedef struct Expression Expression;
+
+// "src\0\0", "append\0" -> "src\0append\0\0"
+char* ident_dot_seq_append(char* seq, char* name);
+void ident_dot_seq_print(char *seq);
+UnresolvedEntry* get_from_ident_dot_seq(StringDict* src, const char* seq, TokenList* tokens,
+                                        int token_index, bool throw);
+
+void free_type(Type* t);
 
 struct Text {
-    Statement* statements;
+    Statement** statements;
     unsigned int len;
 };
 
 struct Type {
-    Struct resolved;
-    char* unresolved;
+    char* name;
+    struct {
+        Type** types;
+        unsigned int len;
+    } generics;
 };
 
 struct StructData {
@@ -144,21 +149,12 @@ struct StructData {
     unsigned int len;
 };
 
-struct Method {
-    char* name;
-    StructData arguments;
-    Type return_type;
-    StructData stack_data;
-    Text text;
-};
-
 enum EntryType {
-    ENTRY_PACKAGE,
     ENTRY_MODULE,
     ENTRY_STRUCT,
     ENTRY_UNION,
     ENTRY_NAMESPACE,
-    ENTRY_METHODS,
+    ENTRY_FUNCTIONS,
     ENTRY_FIELD
 };
 
@@ -168,14 +164,18 @@ struct EntryBase {
     unsigned int line;
 };
 
-struct Field {
-    struct EntryBase meta;
-    Type type;
+struct Function {
+    char* name;
+    StructData arguments[2];
+    Type* return_type;
+    StructData stack_data;
+    Text text;
 };
 
-struct Package {
+struct Field {
     struct EntryBase meta;
-    StringDict package_content;
+    unsigned int offset;
+    Type* type;
 };
 
 struct Module {
@@ -201,65 +201,86 @@ struct Namespace {
     StringDict scope;
 };
 
-struct MethodTable {
-    struct EntryBase meta;
-    Method* value;
-    unsigned int len;
+struct NameTable {
+    const char* name;
+    Function** functions;
+    unsigned int fcount;
+    union {
+        Struct* stct;
+        Union* onion;
+    } type;
+    union {
+        Namespace* nspc;
+        Module* module;
+    } container;
+    Field* variable;
 };
+
+typedef struct PA_operator {
+    struct Expression* left;
+    struct Expression* right;
+    BasicOperator operator;
+} PA_operator;
+
+typedef struct PA_call {
+    Function* call;
+    struct Expression** args;
+    unsigned int arg_count;
+} PA_call;
+
+typedef struct PA_access {
+    struct Expression* from;
+    struct Expression* key;
+} PA_access;
+
+typedef struct fixed_value PA_fixed_value;
 
 struct Expression {
     enum ExpressionType {
-        EXPRESSION_CALL, EXPRESSION_OPERATOR, EXPRESSION_INDEX,
+        EXPRESSION_CALL, EXPRESSION_OPERATOR, EXPRESSION_ARR_ACCESS,
         EXPRESSION_UNARY_OPERATOR, EXPRESSION_FIXED_VALUE,
         EXPRESSION_VAR, EXPRESSION_ASSIGN
     } expression_type;
     union {
-        Field expression_variable;
-        Token* fixed_value;
-        struct {
-            struct Expression* left;
-            struct Expression* right;
-            BasicOperator operator;
-        } expression_operator;
-        struct {
-            Method call;
-            struct Expression** args;
-            unsigned int arg_count;
-        } expression_call;
-        struct {
-            struct Expression* from;
-            struct Expression* key;
-        } expression_index;
+        Field* pa_variable;
+        PA_fixed_value* pa_fixed_value;
+        PA_operator* pa_operator;
+        PA_call* pa_call;
+        PA_access* pa_arr_access;
     };
 };
 
+typedef struct PA_if {
+    Expression* condition;
+    Text on_true;
+    Text on_false;
+} PA_if;
+
+typedef struct PA_while {
+    Expression* condition;
+    Text text;
+} PA_while;
+
+typedef struct PA_for {
+    Text first;
+    Expression* condition;
+    Text last;
+    Text text;
+} PA_for;
+
+typedef Expression PA_return;
+
 struct Statement {
     enum StatementType {
-        STATEMENT_CALC, STATEMENT_IF, STATEMENT_WHILE,
-        STATEMENT_FOR, STATEMENT_SWITCH, STATEMENT_RETURN
+        STATEMENT_EXPRESSION, STATEMENT_IF, STATEMENT_WHILE,
+        STATEMENT_FOR, STATEMENT_RETURN, STATEMENT_EMPTY
     } statement_type;
     union {
-        struct {
-            Expression calc;
-        } statement_calc;
-        struct {
-            Expression condition;
-            Text on_true;
-            Text on_false;
-        } statement_if;
-        struct {
-            Expression condition;
-            Text text;
-        } statement_while;
-        struct {
-            Text first;
-            Expression condition;
-            Text last;
-            Text text;
-        } statement_for;
-        struct {
-            Expression return_value;
-        } statement_return;
+        Expression* pa_expression;
+        PA_if* pa_if;
+        PA_while* pa_while;
+        PA_for* pa_for;
+        PA_return* pa_return;
     };
 };
 
