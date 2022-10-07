@@ -123,6 +123,18 @@ typedef struct NameTable NameTable;
 typedef struct Statement Statement;
 typedef struct Expression Expression;
 
+void free_text(Expression* exp);
+void free_type(Type* exp);
+void free_struct_data(StructData* exp);
+void free_function(Function* exp);
+void free_module(Module* exp);
+void free_struct(Struct* exp);
+void free_union(Union* exp);
+void free_namespace(Namespace* exp);
+void free_field(Field* exp);
+void free_statement(Statement* exp);
+void free_expression(Expression* exp);
+
 // "src\0\0", "append\0" -> "src\0append\0\0"
 char* ident_dot_seq_append(char* seq, char* name);
 void ident_dot_seq_print(char *seq);
@@ -166,9 +178,9 @@ struct EntryBase {
 
 struct Function {
     char* name;
-    StructData arguments[2];
+    StructData* arguments[2];
     Type* return_type;
-    StructData stack_data;
+    StructData* stack_data;
     Text text;
 };
 

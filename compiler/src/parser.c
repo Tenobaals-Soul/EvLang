@@ -91,7 +91,7 @@ void add_function_to_table(StringDict* dict, Function* to_add) {
     NameTable* table = string_dict_get(dict, name);
     if (table == NULL) {
         table = mcalloc(sizeof(struct NameTable));
-        table->name = strmdup(name);
+        table->name = mstrdup(name);
         string_dict_put(dict, name, table);
     }
     table->fcount++;
@@ -104,7 +104,7 @@ void add_to_table(StringDict* dict, void* to_add) {
     NameTable* table = string_dict_get(dict, name);
     if (table == NULL) {
         table = mcalloc(sizeof(NameTable));
-        table->name = strmdup(name);
+        table->name = mstrdup(name);
         string_dict_put(dict, name, table);
     }
     switch (((UnresolvedEntry*) to_add)->entry_type) {
@@ -376,10 +376,8 @@ Declaration* parse_declaration(Cursor* lptr, ParsingError** eptr, int* matched_t
         *decl->field_data = (Field) {
             .meta = {
                 .entry_type = ENTRY_FIELD,
-                .line = 0,
-                .name = name
+                .name = mstrdup(name)
             },
-            .offset = 0,
             .type = type
         };
         decl->initializer = NULL;
@@ -402,14 +400,157 @@ Declaration* parse_declaration(Cursor* lptr, ParsingError** eptr, int* matched_t
     *decl->field_data = (Field) {
         .meta = {
             .entry_type = ENTRY_FIELD,
-            .line = 0,
-            .name = name
+            .name = mstrdup(name)
         },
-        .offset = 0,
         .type = type
     };
     decl->initializer = exp;
     return decl;
+}
+
+/**
+ * @brief struct: "struct" ident[<ident[,ident]*]? { [decl]* }
+ * 
+ * @param lptr 
+ * @param eptr 
+ * @param matched_tokens 
+ * @return Struct* 
+ */
+Struct* parse_struct(Cursor* lptr, ParsingError** eptr, int* matched_tokens) {
+    Cursor l = *lptr;
+    int current_matched_token = 0;
+    ParsingError* err_wr_buffer;
+    if (!cursor_assert_type(l, K_STRUCT_TOKEN)) {
+        *matched_tokens = l.read_pos - lptr->read_pos;
+        *eptr = make_parsing_error(NULL, "expected \"struct\" keyword");
+        return NULL;
+    }
+    cursor_advance(&l);
+    if (!cursor_assert_type(l, IDENTIFIER_TOKEN)) {
+        *matched_tokens = l.read_pos - lptr->read_pos;
+        *eptr = make_parsing_error(NULL, "expected an identifier");
+        return NULL;
+    }
+    char* name = cursor_get(l)->identifier;
+    cursor_advance(&l);
+    if (!cursor_assert_type(l, OPEN_BLOCK_TOKEN)) {
+        *matched_tokens = l.read_pos - lptr->read_pos;
+        *eptr = make_parsing_error(NULL, "expected {");
+        return NULL;
+    }
+    cursor_advance(&l);
+    Struct* stct = malloc(sizeof(Struct));
+    *stct = (Struct) {
+        .meta = {
+            .entry_type = ENTRY_STRUCT,
+            .name = mstrdup(name),
+        },
+        .data = {0}
+    };
+    for (;;) {
+        Declaration* decl = parse_declaration(&l, &err_wr_buffer, &current_matched_token);
+        if (decl == NULL) {
+            free_exception(err_wr_buffer);
+            break;
+        }
+        struct_data_append(&stct->data, decl->field_data);
+        free_expression(decl->initializer);
+        free(decl);
+    }
+    if (!cursor_assert_type(l, CLOSE_BLOCK_TOKEN)) {
+        free_struct(stct);
+        *matched_tokens = l.read_pos - lptr->read_pos;
+        *eptr = make_parsing_error(NULL, "expected }");
+        return NULL;
+    }
+    cursor_advance(&l);
+    *matched_tokens = l.read_pos - lptr->read_pos;
+    *lptr = l;
+    return stct;
+}
+
+/**
+ * @brief 
+ * 
+ * @param lptr 
+ * @param eptr 
+ * @param matched_tokens 
+ * @return Union* 
+ */
+Union* parse_union(Cursor* lptr, ParsingError** eptr, int* matched_tokens) {
+    Cursor l = *lptr;
+    int current_matched_token = 0;
+    ParsingError* err_wr_buffer;
+    if (!cursor_assert_type(l, K_STRUCT_TOKEN)) {
+        *matched_tokens = l.read_pos - lptr->read_pos;
+        *eptr = make_parsing_error(NULL, "expected \"struct\" keyword");
+        return NULL;
+    }
+    cursor_advance(&l);
+    if (!cursor_assert_type(l, IDENTIFIER_TOKEN)) {
+        *matched_tokens = l.read_pos - lptr->read_pos;
+        *eptr = make_parsing_error(NULL, "expected an identifier");
+        return NULL;
+    }
+    char* name = cursor_get(l)->identifier;
+    cursor_advance(&l);
+    if (!cursor_assert_type(l, OPEN_BLOCK_TOKEN)) {
+        *matched_tokens = l.read_pos - lptr->read_pos;
+        *eptr = make_parsing_error(NULL, "expected {");
+        return NULL;
+    }
+    cursor_advance(&l);
+    Union* onion = malloc(sizeof(Union));
+    *onion = (Union) {
+        .meta = {
+            .entry_type = ENTRY_STRUCT,
+            .name = mstrdup(name),
+        },
+        .data = {0}
+    };
+    for (;;) {
+        Type* type = parse_type(&l, &err_wr_buffer, &current_matched_token);
+        if (type == NULL) {
+            free_exception(err_wr_buffer);
+            break;
+        }
+        if (!cursor_assert_type(l, IDENTIFIER_TOKEN)) {
+            free_type(type);
+            free_union(onion);
+            *matched_tokens = l.read_pos - lptr->read_pos;
+            *eptr = make_parsing_error(NULL, "expected an identifier");
+            return NULL;
+        }
+        cursor_advance(&l);
+        char* name = cursor_get(l)->identifier;
+        Field* field = malloc(sizeof(Field));
+        *field = (Field) {
+            .meta = {
+                .entry_type = ENTRY_FIELD,
+                .name = name
+            },
+            .type = type
+        };
+        struct_data_append(&onion->data, field);
+        if (!cursor_assert_type(l, END_TOKEN)) {
+            free_type(type);
+            free_union(onion);
+            *matched_tokens = l.read_pos - lptr->read_pos;
+            *eptr = make_parsing_error(NULL, "expected an ;");
+            return NULL;
+        }
+        cursor_advance(&l);
+    }
+    if (!cursor_assert_type(l, CLOSE_BLOCK_TOKEN)) {
+        free_union(onion);
+        *matched_tokens = l.read_pos - lptr->read_pos;
+        *eptr = make_parsing_error(NULL, "expected }");
+        return NULL;
+    }
+    cursor_advance(&l);
+    *matched_tokens = l.read_pos - lptr->read_pos;
+    *lptr = l;
+    return onion;
 }
 
 Module* parse(TokenList tokens) {

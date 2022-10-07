@@ -4,6 +4,6 @@
 
 char* strmcpy(const char* src);
 
-Module parse(TokenList tokens);
+Module* parse(TokenList tokens);
 
 #endif

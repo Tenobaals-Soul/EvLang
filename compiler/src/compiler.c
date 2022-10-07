@@ -483,10 +483,10 @@ void print_text(Text text) {
     (void) text;
 }
 
-void print_struct_data(StructData struct_data, const char* indent) {
+void print_struct_data(StructData* struct_data, const char* indent) {
     printf("%s{\n", indent);
-    for (unsigned int i = 0; i < struct_data.len; i++) {
-        printf("    %s%s %s", indent, struct_data.value[i].type->name, struct_data.value[i].meta.name);
+    for (unsigned int i = 0; i < struct_data->len; i++) {
+        printf("    %s%s %s", indent, struct_data->value[i].type->name, struct_data->value[i].meta.name);
     }
     printf("%s}\n", indent);
 }
@@ -504,15 +504,15 @@ void print_type(Type* t) {
     }
 }
 
-void print_args(StructData arguments) {
+void print_args(StructData* arguments) {
     unsigned int i = 0;
     printf("(");
-    if (arguments.len) {
-        print_type(arguments.value[i].type);
-        printf(" %s", arguments.value[i].meta.name);
-        for (i = 0; i < arguments.len - 1; i++) {
-            print_type(arguments.value[i].type);
-            printf(", %s", arguments.value[i].meta.name);
+    if (arguments->len) {
+        print_type(arguments->value[i].type);
+        printf(" %s", arguments->value[i].meta.name);
+        for (i = 0; i < arguments->len - 1; i++) {
+            print_type(arguments->value[i].type);
+            printf(", %s", arguments->value[i].meta.name);
         }
     }
     printf(")");
@@ -521,7 +521,7 @@ void print_args(StructData arguments) {
 void print_ast_method(Function* function, char* indent) {
     printf("%s ", indent);
     print_type(function->return_type);
-    if (function->arguments[0].len) {
+    if (function->arguments[0]->len) {
         printf(" ");
         print_args(function->arguments[0]);
     }
@@ -632,11 +632,13 @@ void free_type(Type* t) {
     mfree(t->name);
 }
 
-void free_struct_data(StructData struct_data) {
-    for (uint32_t i = 0; i < struct_data.len; i++) {
-        mfree(struct_data.value[i].meta.name);
-        free_type(struct_data.value[i].type);
+void free_struct_data(StructData* struct_data) {
+    if (struct_data == NULL) return;
+    for (uint32_t i = 0; i < struct_data->len; i++) {
+        mfree(struct_data->value[i].meta.name);
+        free_type(struct_data->value[i].type);
     }
+    free(struct_data);
 }
 
 void free_ast(const char *key, void *val) {

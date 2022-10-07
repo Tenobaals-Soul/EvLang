@@ -2,7 +2,7 @@
 #define INCLUDE_MMEMORY_H
 #include<stdlib.h>
 
-char* strmcpy(const char* src);
+char* mstrdup(const char* src);
 
 void* mmalloc(ssize_t size);
 void* mcalloc(ssize_t size);
